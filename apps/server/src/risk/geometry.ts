@@ -173,7 +173,7 @@ export function recentSegmentSpeeds(fixes: readonly Fix[], count = 2): number[] 
 /** Vehicle speed (7.2): >= 7 m/s on 2 consecutive segments. */
 export function isVehicleSpeed(fixes: readonly Fix[]): boolean {
   const s = recentSegmentSpeeds(fixes, 2);
-  return s.length === 2 && s.every((v) => v >= VEHICLE_SPEED_MPS);
+  return s.length === 2 && s.every((v) => v >= VEHICLE_SPEED_MPS - 1e-6);
 }
 
 /**
