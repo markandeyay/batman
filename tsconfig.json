@@ -1,9 +1,9 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./apps/server" },
-    { "path": "./apps/probe" },
-    { "path": "./scripts" },
-    { "path": "./tests" }
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "apps/*/src/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "*.ts"
   ]
 }

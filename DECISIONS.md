@@ -57,3 +57,6 @@ Format: date, decision, why, spec section affected.
 
 ## 2026-10-10: Spike S1 blocked on the shared-pool allowlist
 - All advanced-imessage calls targeting the human's iPhone return PERMISSION_DENIED "Target not allowed for this project" even though the number is a registered user. Locations authorization on the shared pool is therefore still unknown. Never call `locations.list()` on the shared pool. Next: the human checks the Apple handle at debug.photon.codes and texts the Batman line first, then rerun `pnpm spike s1 focus`. If still denied, the branch is LOCATION_SOURCE=pin and a question to Photon (spec Section 20).
+
+## 2026-10-10: Single root TypeScript project
+- Composite project references prevented scripts from importing apps/server code (rootDir errors). Replaced with one root `tsconfig.json` (includes apps/*/src, scripts, tests) and `allowImportingTsExtensions` with `noEmit` (tsx runs TypeScript directly, nothing is emitted). `pnpm typecheck` = `tsc -p tsconfig.json`. apps/server and apps/probe keep small tsconfigs for focused checks.

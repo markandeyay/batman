@@ -11,7 +11,7 @@
     "doctor": "tsx scripts/doctor.ts",
     "dev": "pnpm --filter @batman/server dev",
     "chat": "cross-env ENABLE_TERMINAL=1 LOCATION_SOURCE=replay pnpm --filter @batman/server dev",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . && tsx scripts/check-copy.ts",
     "test": "vitest run",
     "test:sim": "vitest run tests/sim",
@@ -19,7 +19,8 @@
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm evals",
     "e2e:probe": "tsx apps/probe/src/index.ts",
     "live:guide": "tsx scripts/live-guide.ts",
-    "spike": "tsx scripts/spike.ts"
+    "spike": "tsx scripts/spike.ts",
+    "admin:add-user": "tsx scripts/admin-add-user.ts"
   },
   "devDependencies": {
     "@livekit/protocol": "1.51.0",
