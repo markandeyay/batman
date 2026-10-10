@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(git *)",
+      "Bash(winget list*)",
+      "PowerShell(pnpm *)",
+      "PowerShell(node *)",
+      "WebFetch(domain:photon.codes)",
+      "WebFetch(domain:spectrum.photon.codes)",
+      "WebFetch(domain:docs.livekit.io)",
+      "WebFetch(domain:platform.openai.com)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./data/**)",
+      "Bash(cat .env*)",
+      "Bash(type .env*)",
+      "PowerShell(Get-Content .env*)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "8"
+  }
+}
