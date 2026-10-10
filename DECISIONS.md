@@ -71,3 +71,9 @@ Format: date, decision, why, spec section affected.
 - S6: FAIL. Shared-pool lines reject other pool numbers as recipients. Per spec 14, live testing uses the guided iPhone runner (16.4) plus `pnpm chat` scripted transcripts and sim (16.5 last bullet). apps/probe is kept only as the registration helper; `pnpm e2e:probe` will report the documented fallback. Definition of Done item 2 is satisfied by "documented S6 fallback".
 - Each user is assigned a different pool number, so the guardian's Batman number differs from the user's. Copy never claims they match.
 - Cleanup: Claude deleted 7 useless users (phone numbers that were themselves pool numbers) that the spike created on both projects; the human's registration is untouched.
+
+## 2026-10-10: Final: text-only speech, calls still ring (supersedes the voice re-enable entry)
+- The hackathon OpenAI key and a second key both failed (401). The human chose text-only. `OPENAI_API_KEY` is commented out in .env, so `capabilities(env).speech` is false.
+- No STT: inbound voice notes get the voice_unavailable reply ("Couldn't hear that one, can you text it?") and count as AMBIGUOUS in CHECKING. No voice-note replies.
+- Calls stay enabled because LiveKit and the Photon trunk are configured (`capabilities.calls`). Without TTS, the fake exit call and the L2 check-in call play a short neutral tone (rendered locally with ffmpeg, no OpenAI) so the phone still rings and the user has their excuse to leave. The guardian alert call is skipped without TTS: a tone carries no information for the guardian, so the guardian is alerted by text (and Notify Anyway) only. If a working OpenAI key is added later, speech turns on with no code change.
+- If the S2 call test shows Photon rejects the shared-pool caller ID, calls fall back to text (spec 10.4) regardless.
