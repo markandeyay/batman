@@ -60,3 +60,8 @@ Format: date, decision, why, spec section affected.
 
 ## 2026-10-10: Single root TypeScript project
 - Composite project references prevented scripts from importing apps/server code (rootDir errors). Replaced with one root `tsconfig.json` (includes apps/*/src, scripts, tests) and `allowImportingTsExtensions` with `noEmit` (tsx runs TypeScript directly, nothing is emitted). `pnpm typecheck` = `tsc -p tsconfig.json`. apps/server and apps/probe keep small tsconfigs for focused checks.
+
+## 2026-10-10: Spike S2 partial; OpenAI key rejected
+- LiveKit path verified on Windows without a phone: trunk check PASS, rtc-node room join and audio publish PASS. The real call to the iPhone is pending the batched iPhone session (`pnpm spike s2 call`).
+- `OPENAI_API_KEY` returns 401 "Incorrect API key provided". It may be a hackathon proxy key that needs `OPENAI_BASE_URL` (now honored by speech code). Until fixed, speech is effectively unavailable: STT failures yield the voice_unavailable reply, and calls use a pre-rendered tone or the text fallback. OpenAI error messages can echo part of the key, so logs now mask any `sk-` token.
+- The executor must not wait on `CallService.place()` (it blocks until answered, up to ~30 s) before sending the exit-word text fallback; spec 6.6 requires the fallback within 5 s of a failed placement. The executor sends the fallback as soon as `place()` resolves false and runs the call concurrently with the innocuous reply.
