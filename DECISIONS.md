@@ -34,3 +34,19 @@ Format: date, decision, why, spec section affected.
 
 ## 2026-10-10: Probe project created by Claude via the Photon CLI
 - `npx @photon-ai/cli projects create -n probe --platforms imessage` created project ed2b4211-1b34-4787-bb72-4b777c92ed84 (free tier, shared pool) under the human's Photon account. Its ID and secret were written straight into .env as PROBE_PROJECT_ID / PROBE_PROJECT_SECRET by a script; the secret was never printed. Spike S6 can now run.
+
+## 2026-10-10: Phases 1 to 4 pure logic started before Phase 0 exit
+- Spec 0.2 says not to start a phase before the previous exit criteria pass. Phase 0 exit needs the human's iPhone (S1 accept, S3/S4 sends), and the human asked for autonomous progress. The plan engine, scheduler, risk engine, store, dialogue, NLU, code words, and templates are pure modules whose design does not branch on spike results (S1 only selects the LocationSource implementation; S2 only selects the CallService implementation; S5 is answered by Stable docs). So core-engineer and conversation-engineer started in parallel worktrees against apps/server/src/contracts.ts. Gateway wiring and anything that depends on spike outcomes waits for the spikes. Phase exit criteria are still checked in order before each phase is declared done in PROGRESS.md.
+
+## 2026-10-10: Pure engine plus effects architecture (contracts.ts)
+- The plan engine is a pure function applyEvent(plan, event, ctx) returning the new plan plus a list of Effects (send template, react, call, request_location, schedule, cancel_jobs, purge_location, audit). An executor in the gateway layer performs effects through the Channel interface. This enforces I7 (no LLM in escalation), makes every path testable with a fake clock, and lets the terminal provider and tests share the same logic (spec 8.5).
+
+## 2026-10-10: Voice re-enabled; OpenAI key now available (supersedes "Text-only mode")
+- The human pasted a hackathon-provided OpenAI key through the local import page. STT (`gpt-4o-mini-transcribe`) and TTS (`gpt-4o-mini-tts`, voice `alloy`) are back on per spec 9.5. LLM work stays on Anthropic (`LLM_PROVIDER=anthropic`). A model name `gpt-6-sol` in the pasted notes is not used: the LLM is Claude.
+- Text-only behavior from the earlier entry stays as the runtime fallback when `OPENAI_API_KEY` is absent or a speech call fails.
+- The paste also contained ElevenLabs, Plivo, and unrelated demo values (insurer and doctor numbers, an app password, a Slack webhook) from another project. None were saved or used. The insurer and doctor phone numbers belong to other people and must never be messaged.
+
+## 2026-10-10: Batman's own LiveKit SIP trunk to Photon (spec 10.2)
+- The LiveKit project in .env already had an outbound trunk named "ATP demo" pointing at Plivo (another project). It was left untouched. `scripts/livekit-setup.ts` created a separate trunk `batman-photon`: address `sip.spectrum.photon.codes:5061`, transport TLS, auth username = Spectrum project ID, password = project secret, numbers = [BATMAN_LINE_E164]. Its id replaced `LIVEKIT_SIP_TRUNK_ID` in .env. The script is idempotent (reuses the trunk by name).
+- Added `@livekit/protocol` to apps/server for the `SIPTransport` enum (livekit-server-sdk does not re-export it).
+- Open: whether Photon accepts a shared-pool `assignedPhoneNumber` as caller ID. Spike S2 answers it; fallback stays the voice-note path (spec 10.4).

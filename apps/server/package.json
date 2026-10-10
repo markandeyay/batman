@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "@livekit/protocol": "1.51.0",
     "@livekit/rtc-node": "^1.1.0",
     "@photon-ai/advanced-imessage": "^2.2.0",
     "@spectrum-ts/imessage": "^12.10.1",

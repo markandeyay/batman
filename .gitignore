@@ -7,3 +7,4 @@ logs/
 reports/live/
 .tsbuild/
 *.tsbuildinfo
+.claude/worktrees/
