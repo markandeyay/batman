@@ -6,3 +6,4 @@ data/
 logs/
 reports/live/
 .tsbuild/
+*.tsbuildinfo
