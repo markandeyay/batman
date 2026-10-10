@@ -523,7 +523,13 @@ interface SpeechCreateParams {
 5. **OpenAI accepted audio containers and `pcm` sample rate:** not verifiable from the installed types; platform.openai.com could not be fetched as text. Treat "pcm = 24 kHz, 16-bit, mono" and "CAF not accepted" as documentation knowledge to confirm during Spike S3.
 6. **Whether iMessage accepts raw ADTS `.aac` as an audio message:** untested; the safe path is an m4a container.
 7. **LiveKit Cloud SIP egress to Spectrum over TLS:** certificate verification against `sip.spectrum.photon.codes` must succeed from LiveKit's SIP service; if it does not, fall back to TCP/5060 as the spec allows.
-8. **`@livekit/rtc-node` runtime on Windows:** the win32-x64 binary is installed, but a live connect/publish was not executed here (that is Spike S2).
+8. **`@livekit/rtc-node` runtime on Windows:** RESOLVED 2026-10-10 by Spike S2 `room` step: a bot joined a LiveKit room from Windows and published a 48 kHz mono track; 2000 ms of audio streamed in 2001 ms.
+
+## Addendum 2026-10-10 (from Spikes S5 and S6, live)
+- Sending to a Photon pool number fails with `ValidationError`, gRPC 3 INVALID_ARGUMENT, `retryable=false`: "Target is a Photon-managed shared line, not a valid recipient. Send to the user's own number, not the assigned line." Two shared-pool projects therefore cannot text each other. The probe-line E2E (spec 16.3) is not possible on Free/Pro.
+- Every registration returns a pool number per user, and they differ across users. A guardian sees a different Batman number than the user. Alert copy must never say "this number" as if shared.
+- `GET /imessage/shared/availability` returned `available: true` for a pool number, so it cannot detect pool numbers.
+- Never retry the ValidationError above.
 
 ## Addendum 2026-10-10 (from Spike S1, observed against the live shared-pool project)
 - Shared token: `POST /projects/{id}/imessage/tokens` returned `type: "shared"`, `expiresIn: 900` (15 min). Refresh at 80% (12 min).
