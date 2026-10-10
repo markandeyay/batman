@@ -15,13 +15,13 @@ Phase 0a (environment). Waiting on the human to create .env from .env.example.
 - 2026-10-10: .env.example created from spec Section 19.
 
 ## Next
-1. Human fills .env (see .env.example). Never read or print .env.
+1. Human fills remaining .env values via the local setup form (scratchpad env-setup.mjs on 127.0.0.1:4848). Then register HUMAN_IPHONE_E164 via POST /users and write assignedPhoneNumber to BATMAN_LINE_E164.
 2. Phase 0a remainder: pnpm workspace skeleton + scripts/doctor.ts so `pnpm doctor` verifies env presence (names only) and Photon auth (GET /projects/{id}/).
 3. docs-researcher subagent verifies Photon, LiveKit, OpenAI APIs into docs/PHOTON_NOTES.md.
 4. Phase 0b spikes S1 to S6 in parallel (integration-engineer per spike); batch iPhone steps into one checklist.
 
 ## Blockers
-- .env not yet created by the human.
+- .env exists with Photon credentials and defaults. Still blank: OPENAI_API_KEY, HUMAN_IPHONE_E164, BATMAN_LINE_E164 (to be filled from the pool number after registering the iPhone), optional LiveKit, probe, TEST_GUARDIAN_E164.
 
 ## Notes for a fresh session
 - Spec file was delivered as "BATMAN_SPEC (1).md" and renamed before the first commit.
