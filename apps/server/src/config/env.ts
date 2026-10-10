@@ -30,6 +30,7 @@ export const EnvSchema = z
     LLM_PROVIDER: z.enum(["anthropic", "openai"]).default("anthropic"),
     ANTHROPIC_API_KEY: optStr,
     OPENAI_API_KEY: optStr,
+    OPENAI_BASE_URL: optStr,
     LLM_MODEL_SMART: z.string().min(1),
     LLM_MODEL_FAST: optStr,
     STT_MODEL: optStr,
