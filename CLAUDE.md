@@ -34,7 +34,7 @@ Read the relevant spec sections before any task. Resume state lives in PROGRESS.
 
 ## Commands
 - pnpm install
-- pnpm doctor               # toolchain + env presence + Photon auth check (never prints secrets)
+- pnpm run doctor           # toolchain + env presence + Photon auth check (never prints secrets). "run" is required: pnpm has a built-in doctor command.
 - pnpm dev                  # run server with .env
 - pnpm chat                 # talk to Batman in this console via the terminal provider
 - pnpm verify               # typecheck, lint, unit, invariants, sim, evals

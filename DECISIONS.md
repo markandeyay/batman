@@ -19,3 +19,10 @@ Format: date, decision, why, spec section affected.
 - Human asked to use an Anthropic API key. Spec 9.2 allows `LLM_PROVIDER=anthropic` through an `LlmProvider` interface with identical schemas and validators. `LLM_MODEL_SMART=claude-opus-5-5`, `LLM_MODEL_FAST=claude-haiku-5-5` (current model IDs per the claude-api skill, cached 2026-10-06).
 - Spec 9.5 STT and TTS stay on OpenAI because Anthropic has no speech API. `OPENAI_API_KEY` is required only for voice notes and call audio. If absent, voice features are disabled and Batman runs text-only.
 - Plan extraction uses the Anthropic Messages API structured output (`output_config.format`) with the zod schema mirrored as JSON schema. The older `output_format` parameter is deprecated.
+
+## 2026-10-10: Doctor script is invoked as `pnpm run doctor`
+- pnpm 12 ships a built-in `pnpm doctor` command that shadows the package script. The script keeps the spec's name but must be run with `pnpm run doctor`. CLAUDE.md updated.
+- Root package.json has `"type": "module"` so tsx runs scripts as ESM (top-level await).
+
+## 2026-10-10: Project subagents not registered in the first session
+- .claude/agents/*.md were created after the session started, so the Agent tool did not list them. Workaround for this session: general-purpose agents whose prompt begins with "read and follow .claude/agents/<name>.md". A fresh session sees them natively.

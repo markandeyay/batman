@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "composite": true, "rootDir": ".", "outDir": "../.tsbuild/scripts", "noEmit": false, "emitDeclarationOnly": true, "declaration": true },
+  "include": ["**/*.ts"]
+}
