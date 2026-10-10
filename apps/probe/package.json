@@ -1,0 +1,11 @@
+{
+  "name": "@batman/probe",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "dependencies": {
+    "spectrum-ts": "^12.10.1",
+    "@spectrum-ts/imessage": "^12.10.1",
+    "zod": "^4.6.5"
+  }
+}

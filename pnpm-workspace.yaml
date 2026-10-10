@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+
+# pnpm 12 reads build-script approvals from here (not package.json).
+allowBuilds:
+  better-sqlite3: true
+  "@livekit/rtc-node": true
+  esbuild: true
+  protobufjs: true

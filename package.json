@@ -1,0 +1,33 @@
+{
+  "name": "batman",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Batman: an iMessage-only personal safety agent built on Photon. See docs/BATMAN_SPEC.md.",
+  "packageManager": "pnpm@12.9.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "doctor": "tsx scripts/doctor.ts",
+    "dev": "pnpm --filter @batman/server dev",
+    "chat": "cross-env ENABLE_TERMINAL=1 LOCATION_SOURCE=replay pnpm --filter @batman/server dev",
+    "typecheck": "tsc -b",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:sim": "vitest run tests/sim",
+    "evals": "tsx tests/evals/run.ts",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm evals",
+    "e2e:probe": "tsx apps/probe/src/index.ts",
+    "live:guide": "tsx scripts/live-guide.ts",
+    "spike": "tsx scripts/spike.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "cross-env": "^10.1.0",
+    "eslint": "^10.12.0",
+    "rimraf": "^6.1.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

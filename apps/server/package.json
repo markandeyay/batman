@@ -1,0 +1,28 @@
+{
+  "name": "@batman/server",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "@livekit/rtc-node": "^1.1.0",
+    "@photon-ai/advanced-imessage": "^2.2.0",
+    "@spectrum-ts/imessage": "^12.10.1",
+    "@spectrum-ts/terminal": "^12.10.1",
+    "better-sqlite3": "^13.0.3",
+    "chrono-node": "^2.10.2",
+    "drizzle-orm": "^0.45.4",
+    "geo-tz": "^8.1.9",
+    "livekit-server-sdk": "^2.19.1",
+    "openai": "^7.32.0",
+    "pino": "^10.4.0",
+    "spectrum-ts": "^12.10.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13"
+  }
+}
