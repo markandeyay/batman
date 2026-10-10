@@ -26,3 +26,11 @@ Format: date, decision, why, spec section affected.
 
 ## 2026-10-10: Project subagents not registered in the first session
 - .claude/agents/*.md were created after the session started, so the Agent tool did not list them. Workaround for this session: general-purpose agents whose prompt begins with "read and follow .claude/agents/<name>.md". A fresh session sees them natively.
+
+## 2026-10-10: Text-only mode; no OpenAI key will be available
+- Human cannot obtain an OpenAI API key and accepted a text-only Batman. STT and TTS are disabled: inbound voice notes get the spec 8.4 reply "Couldn't hear that one, can you text it?" and count as AMBIGUOUS during CHECKING; Batman never sends voice notes. Spike S3 (voice note format) is still logged for the record but is not a gate.
+- Exit-word fallback when no call can be placed (spec 6.6 step 3) becomes text-only: send "Call me asap" plus notifySilenced if Focus is on. Guardian alert call (5.2) and L2 check-in call (6.4) are unavailable without TTS audio, so the ladder sends the L2 text plus notifySilenced and proceeds to L3 on the same timers. The `CallService` interface stays so the SIP path can be added later.
+- Human asked Claude to finish the project autonomously and to obtain resources itself where possible. Optional credentials (LiveKit) will be entered at the end if at all.
+
+## 2026-10-10: Probe project created by Claude via the Photon CLI
+- `npx @photon-ai/cli projects create -n probe --platforms imessage` created project ed2b4211-1b34-4787-bb72-4b777c92ed84 (free tier, shared pool) under the human's Photon account. Its ID and secret were written straight into .env as PROBE_PROJECT_ID / PROBE_PROJECT_SECRET by a script; the secret was never printed. Spike S6 can now run.
