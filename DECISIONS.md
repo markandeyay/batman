@@ -50,3 +50,10 @@ Format: date, decision, why, spec section affected.
 - The LiveKit project in .env already had an outbound trunk named "ATP demo" pointing at Plivo (another project). It was left untouched. `scripts/livekit-setup.ts` created a separate trunk `batman-photon`: address `sip.spectrum.photon.codes:5061`, transport TLS, auth username = Spectrum project ID, password = project secret, numbers = [BATMAN_LINE_E164]. Its id replaced `LIVEKIT_SIP_TRUNK_ID` in .env. The script is idempotent (reuses the trunk by name).
 - Added `@livekit/protocol` to apps/server for the `SIPTransport` enum (livekit-server-sdk does not re-export it).
 - Open: whether Photon accepts a shared-pool `assignedPhoneNumber` as caller ID. Spike S2 answers it; fallback stays the voice-note path (spec 10.4).
+
+## 2026-10-10: TypeScript pinned to 6.0.3
+- TypeScript 7.0.2 (latest) is not supported by typescript-eslint 8.71.1 (peer range `>=4.8.4 <6.1.0`), so `pnpm lint` could not run. Pinned `typescript@6.0.3`. The earlier tsc runs that hung for 2+ minutes on Windows also complete in about 2 s on 6.0.3.
+- `pnpm lint` = ESLint (typescript-eslint recommended) plus `scripts/check-copy.ts`, which fails on any em dash in tracked source, docs, or data (the spec file is excluded).
+
+## 2026-10-10: Spike S1 blocked on the shared-pool allowlist
+- All advanced-imessage calls targeting the human's iPhone return PERMISSION_DENIED "Target not allowed for this project" even though the number is a registered user. Locations authorization on the shared pool is therefore still unknown. Never call `locations.list()` on the shared pool. Next: the human checks the Apple handle at debug.photon.codes and texts the Batman line first, then rerun `pnpm spike s1 focus`. If still denied, the branch is LOCATION_SOURCE=pin and a question to Photon (spec Section 20).

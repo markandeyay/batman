@@ -524,3 +524,8 @@ interface SpeechCreateParams {
 6. **Whether iMessage accepts raw ADTS `.aac` as an audio message:** untested; the safe path is an m4a container.
 7. **LiveKit Cloud SIP egress to Spectrum over TLS:** certificate verification against `sip.spectrum.photon.codes` must succeed from LiveKit's SIP service; if it does not, fall back to TCP/5060 as the spec allows.
 8. **`@livekit/rtc-node` runtime on Windows:** the win32-x64 binary is installed, but a live connect/publish was not executed here (that is Spike S2).
+
+## Addendum 2026-10-10 (from Spike S1, observed against the live shared-pool project)
+- Shared token: `POST /projects/{id}/imessage/tokens` returned `type: "shared"`, `expiresIn: 900` (15 min). Refresh at 80% (12 min).
+- Every gRPC call that targets the human's registered number (`addresses.isIMessageAvailable`, `addresses.isFocusSilenced`, `addresses.get`, `chats.get`, `messages.listInChat`, `locations.request`, `locations.get`) failed with `AuthenticationError`, gRPC code 7 PERMISSION_DENIED, `retryable=false`, message `[spectrum-imessage] Target not allowed for this project`, even though `GET /projects/{id}/users/` lists the number as a registered shared user. Photon troubleshooting names two causes: the number is not a registered user (ruled out), or the Apple iMessage handle differs from the registered number (to check on the iPhone via https://debug.photon.codes). It may also require the user to text the assigned line first. Unresolved; see docs/spikes/S1.md.
+- `locations.list()` on a shared token fails with gRPC 9 FAILED_PRECONDITION `No instance routed for this request`. There is no target to route by. Batman must never call `list()`; acceptance is detected with `get(address)` (spec 7.1). Invariant I2 then holds by construction.

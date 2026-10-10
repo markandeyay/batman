@@ -12,7 +12,7 @@
     "dev": "pnpm --filter @batman/server dev",
     "chat": "cross-env ENABLE_TERMINAL=1 LOCATION_SOURCE=replay pnpm --filter @batman/server dev",
     "typecheck": "tsc -b",
-    "lint": "eslint .",
+    "lint": "eslint . && tsx scripts/check-copy.ts",
     "test": "vitest run",
     "test:sim": "vitest run tests/sim",
     "evals": "tsx tests/evals/run.ts",
@@ -22,13 +22,16 @@
     "spike": "tsx scripts/spike.ts"
   },
   "devDependencies": {
+    "@livekit/protocol": "1.51.0",
     "@types/node": "^26.6.5",
     "cross-env": "^10.1.0",
     "eslint": "^10.12.0",
+    "livekit-server-sdk": "2.19.1",
     "rimraf": "^6.1.3",
     "spectrum-ts": "12.10.1",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
     "vitest": "^5.0.3"
   },
   "type": "module",

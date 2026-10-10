@@ -4,12 +4,10 @@
 // Usage: npx tsx scripts/livekit-setup.ts
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
+import { SipClient } from "livekit-server-sdk";
+import { ListUpdate, SIPTransport } from "@livekit/protocol";
 
 const root = path.resolve(import.meta.dirname, "..");
-const require = createRequire(path.join(root, "apps/server/package.json"));
-const { SipClient } = require("livekit-server-sdk") as typeof import("livekit-server-sdk");
-const { SIPTransport } = require("@livekit/protocol") as typeof import("@livekit/protocol");
 
 const envPath = path.join(root, ".env");
 const raw = fs.readFileSync(envPath, "utf8");
@@ -30,10 +28,12 @@ const existing = (await sip.listSipOutboundTrunk()).find((t) => t.name === TRUNK
 let trunkId: string;
 if (existing) {
   trunkId = existing.sipTrunkId;
+  // address and transport are not updatable through the API; only warn if they drifted.
+  if (existing.address !== "sip.spectrum.photon.codes:5061" || existing.transport !== SIPTransport.SIP_TRANSPORT_TLS) {
+    console.log("warning: trunk address or transport differs from spec 10.2; recreate it in the LiveKit dashboard if calls fail");
+  }
   await sip.updateSipOutboundTrunkFields(trunkId, {
-    address: "sip.spectrum.photon.codes:5061",
-    transport: SIPTransport.SIP_TRANSPORT_TLS,
-    numbers: [env.BATMAN_LINE_E164!],
+    numbers: new ListUpdate({ set: [env.BATMAN_LINE_E164!] }),
     authUsername: env.SPECTRUM_PROJECT_ID!,
     authPassword: env.SPECTRUM_PROJECT_SECRET!,
   });
