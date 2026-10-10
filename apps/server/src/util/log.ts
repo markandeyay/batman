@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import pino, { type Logger } from "pino";
 
-const PHONE_RE = /\+?\d[\d\s\-().]{8,}\d/g;
+const PHONE_RE = /\+?\(?\d[\d\s\-().]{8,}\d/g;
 const COORD_KEYS = new Set(["lat", "lng", "latitude", "longitude", "venueLat", "venueLng", "homeLat", "homeLng"]);
 const SECRET_KEY_RE = /secret|token|password|apikey|api_key|authorization/i;
 
