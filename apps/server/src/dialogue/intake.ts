@@ -8,7 +8,7 @@ import type { Plan, PlanType, User } from "../contracts.js";
 import { formatClock, formatDayTime } from "../geo/timezone.js";
 import { extractPlan, type ExtractOutcome, type PartialPlanFacts } from "../nlu/extractPlan.js";
 import { isAffirmative, isGo, isNegative } from "../nlu/rules.js";
-import { phraseQuestions, questionItem, type CopyItem, type QuestionId } from "../notify/copy.js";
+import { phraseQuestions, questionItem, type CopyFacts, type CopyItem, type QuestionId } from "../notify/copy.js";
 import { durationText } from "../notify/templates.js";
 import { currentGuardianFor } from "./guardian.js";
 import { sendTemplate } from "./out.js";
@@ -179,7 +179,12 @@ async function nextStep(ports: DialoguePorts, user: User, planId: string, state:
       items.push({ id: "statement", text: durationStatement(plan.type, intake.durationMin) });
     }
     for (const q of optIds) items.push(questionItem(q));
-    const facts = [user.displayName, plan.venueText, plan.counterpartName, plan.counterpartSource].filter((x): x is string => !!x);
+    const facts: CopyFacts = {
+      userName: user.displayName,
+      counterpartName: plan.counterpartName,
+      counterpartSource: plan.counterpartSource,
+      venueText: plan.venueText,
+    };
     const phrased = await ports.typing(to, () => phraseQuestions(items, facts, ports.llm));
     await sendTemplate(ports, to, "intake_questions", { questionsText: phrased.text });
     intake.asked.push(...questions);
@@ -194,7 +199,9 @@ async function nextStep(ports: DialoguePorts, user: User, planId: string, state:
     const items = [!plan.startAt ? questionItem("start_time") : null, !plan.venueText ? questionItem("venue") : null].filter(
       (x): x is CopyItem => x !== null,
     );
-    await sendTemplate(ports, to, "intake_questions", { questionsText: items.map((i) => i.text).join(" ") });
+    const facts: CopyFacts = { userName: user.displayName, counterpartName: plan.counterpartName, venueText: plan.venueText };
+    const phrased = await ports.typing(to, () => phraseQuestions(items, facts, ports.llm));
+    await sendTemplate(ports, to, "intake_questions", { questionsText: phrased.text });
     intake.rounds += 1;
     await saveState(ports, user, { ...state, intake, pending: { kind: "questions", planId: plan.id } });
     return "intake_required_again";
@@ -333,7 +340,7 @@ export async function handleIntakeText(ports: DialoguePorts, user: User, plan: P
   const intake = state.intake && state.intake.planId === plan.id ? state.intake : plan.state === "DRAFT" ? newIntake(plan.id) : null;
   const history = intake ? [...intake.messages.slice(-3), msg.text] : [msg.text];
   const outcome = await ports.typing(user.addressE164, () =>
-    extractPlan({ messages: history, partial: factsOf(plan, intake), now, tz }, ports.llm),
+    extractPlan({ messages: history, partial: factsOf(plan, intake), now, tz, userName: user.displayName }, ports.llm),
   );
 
   if (plan.state !== "DRAFT") {
@@ -384,7 +391,7 @@ export async function handleIntakeText(ports: DialoguePorts, user: User, plan: P
 }
 
 async function startNewPlan(ports: DialoguePorts, user: User, text: string, tz: string, now: Date): Promise<string> {
-  const outcome = await ports.typing(user.addressE164, () => extractPlan({ messages: [text], partial: null, now, tz }, ports.llm));
+  const outcome = await ports.typing(user.addressE164, () => extractPlan({ messages: [text], partial: null, now, tz, userName: user.displayName }, ports.llm));
   if (!extractedSomething(outcome)) {
     await sendTemplate(ports, user.addressE164, "help");
     return "intake_nothing";

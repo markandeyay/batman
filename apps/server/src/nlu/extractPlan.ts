@@ -47,6 +47,8 @@ export interface ExtractInput {
   partial?: PartialPlanFacts | null;
   now: Date;
   tz: string;
+  /** The user's own display name. Never the counterpart (4.4.2). */
+  userName?: string | null;
 }
 
 export interface ResolvedTime {
@@ -74,6 +76,21 @@ function hasRelative(text: string): boolean {
 }
 
 /**
+ * A bare duration ("2 hours", "for 30 min", "30 min later") is never a start time: chrono reads
+ * it as "now plus the duration", which turned "make it 2 hours" into a start time.
+ */
+const BARE_DURATION_RE =
+  /^(?:for\s+)?(?:about\s+|around\s+)?(?:\d+(?:\.\d+)?|an?|one|two|three|four|five|half an?|a few|a couple(?: of)?)\s*(?:hours?|hrs?|h|minutes?|mins?|m)(?:\s+(?:later|earlier|longer))?$/i;
+
+/** "rn", "asap", "right now": now (chrono already handles a plain "now"). */
+const NOW_WORDS_RE = /\b(rn|asap|right now|right away|now)\b/i;
+
+/** True when the word at `index` is negated ("starts at 11 not now"). */
+function negatedAt(text: string, index: number): boolean {
+  return /\bnot\s*$/i.test(text.slice(0, index));
+}
+
+/**
  * Parse a time phrase in the user's timezone. Returns null when no clock time is certain
  * ("tonight" alone has no time). Bare hours without am/pm resolve to the next occurrence, or to
  * the evening for dates and hours 1 to 7 when a day was given.
@@ -83,6 +100,8 @@ export function parseTimeInTz(text: string, now: Date, tz: string, type: PlanTyp
   const ref = { instant: now, timezone: offsetMinutes(now, tz) };
   const results = chrono.parse(text, ref, { forwardDate: true });
   for (const r of results) {
+    if (BARE_DURATION_RE.test(r.text.trim())) continue;
+    if (/^now$/i.test(r.text.trim()) && negatedAt(text, r.index)) continue;
     const s = r.start;
     if (hasRelative(r.text) || hasRelative(text)) {
       if (s.isCertain("hour") || s.isCertain("minute")) return s.date();
@@ -130,6 +149,8 @@ export function parseTimeInTz(text: string, now: Date, tz: string, type: PlanTyp
     }
     return zonedWallTimeToUtc({ year: y, month: mo, day: d, hour, minute }, tz);
   }
+  const nowWord = NOW_WORDS_RE.exec(text);
+  if (nowWord && !negatedAt(text, nowWord.index)) return new Date(now);
   return null;
 }
 
@@ -165,6 +186,28 @@ function nextDaySameTime(at: Date, now: Date): Date {
   let t = at.getTime();
   while (t < now.getTime()) t += 86400000;
   return new Date(t);
+}
+
+// ---------- counterpart post-check (4.4.2) ----------
+
+const SELF_WORDS = new Set(["me", "i", "im", "myself", "self", "you", "us", "we", "mine", "yourself"]);
+
+function firstName(s: string): string {
+  return (s.trim().split(/\s+/)[0] ?? "").toLowerCase().replace(/[^\p{L}\p{M}'-]/gu, "");
+}
+
+/**
+ * Deterministic post-check on any extracted counterpart: never the user's own display name
+ * (case-insensitive, first-name match) and never "me" or "I". Returns the cleaned name or null.
+ */
+export function sanitizeCounterpart(name: string | null | undefined, userName: string | null | undefined): string | null {
+  if (typeof name !== "string") return null;
+  const t = name.trim();
+  if (!t) return null;
+  const first = firstName(t);
+  if (!first || SELF_WORDS.has(first)) return null;
+  if (userName && userName.trim() && first === firstName(userName)) return null;
+  return t;
 }
 
 // ---------- deterministic fallback extractor ----------
@@ -240,12 +283,15 @@ function inferCounterpart(t: string): string | null {
 }
 
 /** Deterministic extraction used when no model is available or it fails. */
-export function fallbackExtract(messages: string[], now: Date, tz: string): PlanExtraction {
+export function fallbackExtract(messages: string[], now: Date, tz: string, opts: { userName?: string | null } = {}): PlanExtraction {
   const t = messages.join("\n");
   const type = inferType(t);
   const ref = { instant: now, timezone: offsetMinutes(now, tz) };
-  const parsed = chrono.parse(t, ref, { forwardDate: true }).find((r) => r.start.isCertain("hour") || hasRelative(r.text));
-  const startAtText = parsed ? parsed.text : null;
+  const parsed = chrono
+    .parse(t, ref, { forwardDate: true })
+    .find((r) => !BARE_DURATION_RE.test(r.text.trim()) && (r.start.isCertain("hour") || hasRelative(r.text)));
+  const nowWord = NOW_WORDS_RE.exec(t);
+  const startAtText = parsed ? parsed.text : nowWord && !negatedAt(t, nowWord.index) ? nowWord[0] : null;
   let source: string | null = null;
   for (const [re, name] of SOURCES) {
     if (re.test(t)) {
@@ -266,7 +312,7 @@ export function fallbackExtract(messages: string[], now: Date, tz: string): Plan
     startAtISO: null,
     venueText,
     durationMin: inferDuration(t),
-    counterpartName: inferCounterpart(t),
+    counterpartName: sanitizeCounterpart(inferCounterpart(t), opts.userName),
     counterpartSource: source,
     transport: inferTransport(t),
     firstTimeInPerson: /\b(first date|first time meeting|never met|meeting for the first time|first time in person)\b/i.test(t)
@@ -306,7 +352,13 @@ export async function extractPlan(input: ExtractInput, llm: LlmProvider | null, 
         tier: "smart",
         effort: "low",
         system: loadPrompt("extractPlan"),
-        user: JSON.stringify({ now: describeNow(input.now, input.tz), timezone: input.tz, currentPlan: partial, messages: input.messages }),
+        user: JSON.stringify({
+          now: describeNow(input.now, input.tz),
+          timezone: input.tz,
+          userName: input.userName ?? null,
+          currentPlan: partial,
+          messages: input.messages,
+        }),
         schema: PlanExtraction,
         timeoutMs: opts.timeoutMs ?? EXTRACT_TIMEOUT_MS,
         maxTokens: 1500,
@@ -316,7 +368,8 @@ export async function extractPlan(input: ExtractInput, llm: LlmProvider | null, 
       extraction = null;
     }
   }
-  if (!extraction) extraction = fallbackExtract(input.messages, input.now, input.tz);
+  if (!extraction) extraction = fallbackExtract(input.messages, input.now, input.tz, { userName: input.userName ?? null });
+  else extraction = { ...extraction, counterpartName: sanitizeCounterpart(extraction.counterpartName, input.userName) };
   const time = resolveStartTime(extraction, input.now, input.tz);
   return { extraction, source, time };
 }
