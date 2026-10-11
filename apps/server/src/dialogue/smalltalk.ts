@@ -45,6 +45,8 @@ export async function answerOffScript(
         facts: { userName: user?.displayName ?? null, guardianName, counterpartName: plan?.counterpartName ?? null, other: planLine ? [planLine] : [] },
       },
       ports.llm,
+      // Reasons only (never the text): banned words, length, grounding, comics.
+      { onReject: (reasons) => ports.log?.info("smalltalk_rejected", { step, reasons }) },
     ),
   );
   let answered = false;

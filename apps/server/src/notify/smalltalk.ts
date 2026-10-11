@@ -25,7 +25,7 @@ export const STEP_CONTEXT: Record<SmallTalkStep, string> = {
 
 /** Grounded capability facts the model may use (and the validator accepts). */
 export const CAPABILITY_FACTS: readonly string[] = [
-  "An automated assistant, not a person and not 911.",
+  "An automated assistant, not a person.",
   "Before you meet someone new (a date, a Marketplace pickup or sale, an apartment viewing), text me who, where, and when.",
   "During the meetup I quietly look out for you.",
   "If something seems off and you don't answer me, I text you, then call you, then text your backup.",
@@ -74,7 +74,8 @@ export interface SmallTalkResult {
 export function validateSmallTalk(text: string, grounding: readonly string[]): string[] {
   const reasons = [...validateCopy(text, grounding, { maxChars: 200 }).reasons];
   if (COMICS_RE.test(text)) reasons.push("comics");
-  if (/\breply go\b/i.test(text)) reasons.push("steer_in_reply"); // code adds the steer line
+  // Code adds the steer line, which carries the only question (one question per turn).
+  if (/\breply go\b/i.test(text) || text.includes("?")) reasons.push("steer_in_reply");
   return reasons;
 }
 
@@ -83,7 +84,11 @@ export function validateSmallTalk(text: string, grounding: readonly string[]): s
  * model, it fails or times out (6 s), or its output fails validation: callers use the fixed
  * smalltalk_reply fallback.
  */
-export async function smallTalkReply(input: SmallTalkInput, llm: LlmProvider | null, opts: { timeoutMs?: number } = {}): Promise<SmallTalkResult | null> {
+export async function smallTalkReply(
+  input: SmallTalkInput,
+  llm: LlmProvider | null,
+  opts: { timeoutMs?: number; onReject?: (reasons: string[]) => void } = {},
+): Promise<SmallTalkResult | null> {
   if (!llm || !input.message.trim()) return null;
   const facts = {
     userName: input.facts.userName ?? null,
@@ -105,9 +110,14 @@ export async function smallTalkReply(input: SmallTalkInput, llm: LlmProvider | n
     });
     const text = out.text.trim();
     const grounding = [input.message, STEP_CONTEXT[input.step], ...CAPABILITY_FACTS, ...factValues(input.facts)];
-    if (validateSmallTalk(text, grounding).length > 0) return null;
+    const reasons = validateSmallTalk(text, grounding);
+    if (reasons.length > 0) {
+      opts.onReject?.(reasons);
+      return null;
+    }
     return { text, source: "model" };
   } catch {
+    opts.onReject?.(["llm_error"]);
     return null;
   }
 }

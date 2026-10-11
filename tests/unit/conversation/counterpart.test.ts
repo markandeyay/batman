@@ -84,13 +84,14 @@ describe("LLM-phrased questions never address the user as the counterpart (9.4)"
     expect(r.rejected).toContain("names_user");
   });
 
-  it("tells the model which name is the user and which is the counterpart", async () => {
+  it("gives the model the counterpart but never the user's own name", async () => {
     const items = [questionItem("start_time")];
     const llm = new FakeLlmProvider(() => ({ text: "What time are you meeting Jordan?" }));
     const r = await phraseQuestions(items, { userName: "Marky", counterpartName: "Jordan" }, llm);
     expect(r).toMatchObject({ source: "model", text: "What time are you meeting Jordan?" });
-    const sent = JSON.parse(llm.calls[0]!.user) as { userName?: string; counterpartName?: string };
-    expect(sent).toMatchObject({ userName: "Marky", counterpartName: "Jordan" });
+    const sent = JSON.parse(llm.calls[0]!.user) as { counterpartName?: string };
+    expect(sent.counterpartName).toBe("Jordan");
+    expect(llm.calls[0]!.user).not.toMatch(/marky/i);
   });
 });
 

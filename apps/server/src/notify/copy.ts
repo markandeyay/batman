@@ -121,12 +121,13 @@ export async function phraseQuestions(
       tier: "fast",
       effort: "low",
       system: loadPrompt("phraseQuestions"),
+      // The user's own name is never sent: the model cannot mistake it for the counterpart (live
+      // bug "Nice, you're meeting Marky"). namesUser() below still rejects it if it appears.
       user: JSON.stringify({
         items: items.map((i) => i.text),
-        userName: labeled.userName ?? null,
         counterpartName: labeled.counterpartName ?? null,
         venue: labeled.venueText ?? null,
-        knownFacts: factValues(facts),
+        knownFacts: factValues({ ...labeled, userName: null }),
       }),
       schema: PhraseOutput,
       timeoutMs: opts.timeoutMs ?? COPY_TIMEOUT_MS,
