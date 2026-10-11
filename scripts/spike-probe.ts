@@ -192,7 +192,7 @@ async function stepRun(): Promise<void> {
   log("ORDER step 1: probe registers BATMAN_LINE_E164 (seed)");
   assertPoolOnly(BATMAN_LINE, "register");
   const s1 = await ensureUser(probe, BATMAN_LINE);
-  let P = s1.user.assignedPhoneNumber;
+  const P = s1.user.assignedPhoneNumber;
   log(`  probe: phone=${redact(BATMAN_LINE)} -> assigned=${redact(P)} created=${s1.created} equalsBatmanLine=${P === BATMAN_LINE}`);
   if (P === BATMAN_LINE) throw new Error("probe was assigned the same pool number it should text; ordering impossible");
 

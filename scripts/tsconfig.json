@@ -1,7 +1,5 @@
 {
   "extends": "../tsconfig.base.json",
-  "include": [
-    "**/*.ts",
-    "../apps/*/src/**/*.ts"
-  ]
+  "compilerOptions": { "composite": true, "rootDir": ".", "outDir": "../.tsbuild/scripts", "noEmit": false, "emitDeclarationOnly": true, "declaration": true },
+  "include": ["**/*.ts"]
 }
