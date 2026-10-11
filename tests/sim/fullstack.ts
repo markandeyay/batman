@@ -344,6 +344,7 @@ export class FullStack {
         return { visible, expiresAt: this.track?.share.expiresAt ?? null };
       },
       onError: (e) => this.errors.push(e),
+      lastUserMessageId: (plan) => this.lastInbound.get(plan.userId) ?? null,
     });
     const prevRepo: StoreDialogueRepo | undefined = this.repo;
     this.repo = new StoreDialogueRepo(this.store, () => this.runtime, this.clock);
