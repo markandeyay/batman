@@ -41,6 +41,11 @@ export interface PlanRuntimeOptions {
   defaultTz: string;
   /** Find My visibility check for loc_poll and t_minus_30 (4.5). Absent: treated as not visible. */
   shareProbe?: (plan: EnginePlan) => Promise<{ visible: boolean; expiresAt: Date | null }>;
+  /**
+   * Latest inbound message id from the plan's user. Share acceptance is usually found by a
+   * loc_poll job, which has no inbound message; this supplies the 4.5 step 3 tapback target.
+   */
+  lastUserMessageId?: (plan: EnginePlan) => string | null;
   /** Override night detection (tests). */
   night?: boolean;
   onError?: (err: unknown, info: { planId: string; event?: string; effect?: string }) => void;
@@ -85,10 +90,12 @@ export class PlanRuntime {
     const planId = job.planId;
     const event: EngineEvent = job.payload ? { type: "timer", job: job.kind, payload: job.payload } : { type: "timer", job: job.kind };
     await this.serial(planId, async () => {
-      const extra: Pick<EngineContext, "share"> = {};
+      const extra: Pick<EngineContext, "share" | "lastUserMessageId"> = {};
       if (SHARE_JOBS.includes(job.kind) && this.o.shareProbe) {
         const plan = repo.getPlan(this.o.store, planId);
         if (plan) {
+          const last = this.o.lastUserMessageId?.(plan);
+          if (last) extra.lastUserMessageId = last;
           try {
             extra.share = await this.o.shareProbe(plan);
           } catch (err) {
