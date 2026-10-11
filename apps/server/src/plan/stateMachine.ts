@@ -753,6 +753,22 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     },
   }),
 
+  // ----- H5 call results -----
+  row({
+    id: "call-result",
+    spec: "H5 / 6.6 step 3: a fake call that was not placed falls back to a text; I11: remember whether the check-in call happened",
+    from: NON_TERMINAL,
+    on: "call_result",
+    run: (tx, e) => {
+      tx.audit("call_result", { script: e.script, placed: e.placed });
+      if (e.script === "checkin") tx.p.checkinCallPlaced = e.placed;
+      if (e.script === "fake" && !e.placed) {
+        tx.audit("call_fallback", { script: e.script });
+        tx.send("user", "cw_call_fallback_text", {}, { notifyAnyway: true, critical: true });
+      }
+    },
+  }),
+
   // ----- I16 -----
   row({
     id: "internal-error",

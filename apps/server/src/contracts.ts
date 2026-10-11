@@ -243,7 +243,12 @@ export type EngineEvent =
   | { type: "guardian_stop" }
   | { type: "guardian_call_request" }
   | { type: "guardian_location_request" }
-  | { type: "internal_error"; message: string };
+  | { type: "internal_error"; message: string }
+  /**
+   * A call effect finished (H5). placed=false also covers a skipped call and the runtime's hard
+   * timeout. The engine sends the fake call fallback text and keeps guardian copy honest (I11).
+   */
+  | { type: "call_result"; script: "fake" | "checkin" | "guardian_alert"; placed: boolean };
 
 // ---------- Effects (performed by the executor) ----------
 

@@ -548,6 +548,14 @@ describe("6.6 exit word", () => {
     expect(kinds(r.fx)).toEqual(["send:user:cw_exit_reply", "call:user:fake"]);
   });
 
+  it("call_result: a failed fake call sends the fallback text; a check-in result is remembered (H5)", () => {
+    const r = apply(active(), { type: "call_result", script: "fake", placed: false }, ctxAt(at(60)));
+    expect(r.row).toBe("call-result");
+    expect(sends(r.fx)).toEqual(["user:cw_call_fallback_text"]);
+    expect(sends(apply(active(), { type: "call_result", script: "fake", placed: true }, ctxAt(at(60))).fx)).toEqual([]);
+    expect(apply(active(), { type: "call_result", script: "checkin", placed: true }, ctxAt(at(60))).plan.checkinCallPlaced).toBe(true);
+  });
+
   it("ARMED / AWAITING_GUARDIAN: alert word and distress escalate only with an accepted guardian (H3)", () => {
     const pending = { guardian: { displayName: "Priya", linkStatus: "pending" as const, stopped: false } };
     expect(apply(basePlan({ state: "ARMED" }), { type: "alert_word", messageId: "u" }, ctxAt(at(-60))).row).toBe("alert-word-pre-window");

@@ -67,8 +67,8 @@ describe("15.3 scenarios", () => {
     expect(s.timeline(1)).toEqual([
       "135 send user:ot_overtime",
       "145 send user:lad_l1",
-      "150 call user:checkin",
       "150 send user:lad_l2_text",
+      "150 call user:checkin",
       "153 send guardian:gdn_alert",
       "153 call guardian:guardian_alert",
       "156 send guardian:gdn_alert_repeat",
@@ -111,8 +111,8 @@ describe("15.3 scenarios", () => {
     expect(s.timeline(1)).toEqual([
       "135 send user:ot_overtime",
       "140 send user:act_calling_you_now",
-      "140 call user:fake",
       "140 send guardian:gdn_alert",
+      "140 call user:fake",
       "140 call guardian:guardian_alert",
     ]);
     expect(s.out.find((o) => o.template === "gdn_alert")!.params?.reason).toEqual({ kind: "not_ok_reply" });
@@ -123,10 +123,10 @@ describe("15.3 scenarios", () => {
     await s.runUntil(141);
     expect(s.timeline(139)).toEqual([
       "140 send user:act_calling_you_now",
-      "140 call user:fake",
-      "140 send user:cw_call_fallback_text",
       "140 send guardian:gdn_alert",
+      "140 call user:fake",
       "140 call guardian:guardian_alert",
+      "140 send user:cw_call_fallback_text",
     ]);
   });
 
@@ -140,7 +140,7 @@ describe("15.3 scenarios", () => {
     await s.runUntil(149.9);
     expect(s.timeline(146)).toEqual([]);
     await s.runUntil(151);
-    expect(s.timeline(146)).toEqual(["150 call user:checkin", "150 send user:lad_l2_text"]);
+    expect(s.timeline(146)).toEqual(["150 send user:lad_l2_text", "150 call user:checkin"]);
     expect(s.sends().filter((x) => x === "user:lad_l1")).toHaveLength(1);
   });
 
@@ -159,8 +159,8 @@ describe("15.3 scenarios", () => {
     expect(s.timeline(1)).toEqual([
       "10 send user:lad_l0_hard",
       "11.8 send user:lad_l1", // hard T1 3 min x 0.6
-      "13 call user:checkin", // T2 2 min x 0.6
-      "13 send user:lad_l2_text",
+      "13 send user:lad_l2_text", // T2 2 min x 0.6
+      "13 call user:checkin",
       "14.2 send guardian:gdn_alert", // T3 2 min x 0.6
       "14.2 call guardian:guardian_alert",
       "17.2 send guardian:gdn_alert_repeat",
@@ -221,8 +221,8 @@ describe("15.3 scenarios", () => {
     expect(s.timeline(100)).toEqual([
       "135 send user:ot_overtime",
       "145 send user:lad_l1",
-      "150 call user:checkin",
       "150 send user:lad_l2_text",
+      "150 call user:checkin",
       "153 send guardian:gdn_alert",
       "153 call guardian:guardian_alert",
     ]);
@@ -271,8 +271,8 @@ describe("15.3 scenarios", () => {
     expect(s.timeline(100)).toEqual([
       "150 send user:ot_overtime",
       "160 send user:lad_l1",
-      "165 call user:checkin",
       "165 send user:lad_l2_text",
+      "165 call user:checkin",
       "168 send guardian:gdn_alert",
       "168 call guardian:guardian_alert",
     ]);

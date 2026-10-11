@@ -201,9 +201,11 @@ export class Sim {
       if (msg && msg.getTime() <= next) {
         const { item } = this.script[this.scriptPtr++]!;
         await this.deliver(item);
+        await this.runtime.idle(); // H5: calls run in the background; settle their call_result
         continue;
       }
       await this.scheduler.runDue();
+      await this.runtime.idle();
     }
     await this.clock.set(new Date(target));
   }
@@ -220,6 +222,7 @@ export class Sim {
   /** Inject an event now (outside the script). */
   async send(event: EngineEvent): Promise<void> {
     await this.runtime.dispatch(this.planId, event);
+    await this.runtime.idle();
   }
 
   /** Host asleep: nothing runs and live fixes are missed until `toMin`. Then catch up (I16). */

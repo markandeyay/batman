@@ -518,6 +518,7 @@ export class FullStack {
     let route = "error";
     try {
       route = (await handleInbound(this.ports, { id: msgId, from: address, at: this.clock.now(), content })).route;
+      await this.runtime.idle(); // H5: calls run in the background; settle their call_result
     } catch (err) {
       this.errors.push(err);
     }
@@ -590,6 +591,7 @@ export class FullStack {
         continue;
       }
       await this.scheduler.runDue();
+      await this.runtime.idle();
       await this.flushFixes();
     }
     if (this.clock.now().getTime() < target) await this.clock.set(new Date(target));

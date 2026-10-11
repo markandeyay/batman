@@ -21,7 +21,10 @@ export interface OutboundPort {
   /** Render and send a template. Returns the sent message ref (for check-in tracking) or null. */
   send(effect: SendEffect, plan: EnginePlan): Promise<SentRef | null>;
   react(effect: ReactEffect, plan: EnginePlan): Promise<void>;
-  /** Returns false if no call could be placed. */
+  /**
+   * Place a call and resolve with whether it was placed (false: skipped or failed). May take as
+   * long as the call itself; the runtime never awaits it inline (H5) and bounds it with a timeout.
+   */
   call(effect: CallEffect, plan: EnginePlan): Promise<boolean>;
   requestLocation(plan: EnginePlan): Promise<void>;
   startWatch(plan: EnginePlan): Promise<void>;
@@ -48,15 +51,27 @@ export interface PlanRuntimeOptions {
   lastUserMessageId?: (plan: EnginePlan) => string | null;
   /** Override night detection (tests). */
   night?: boolean;
+  /** Hard real-time bound on one call placement (H5). Default 60 s. A timeout counts as not placed. */
+  callTimeoutMs?: number;
   onError?: (err: unknown, info: { planId: string; event?: string; effect?: string }) => void;
 }
 
 const SHARE_JOBS: readonly JobKind[] = ["loc_poll", "t_minus_30"];
 
+export const CALL_TIMEOUT_MS = 60_000;
+
 export class PlanRuntime {
   private readonly queues = new Map<string, Promise<unknown>>();
+  /** Calls running in the background, with their call_result dispatch (H5). */
+  private readonly pendingCalls = new Set<Promise<void>>();
 
   constructor(private readonly o: PlanRuntimeOptions) {}
+
+  /** Resolves when background calls and their call_result events have finished (tests, shutdown). */
+  async idle(): Promise<void> {
+    while (this.pendingCalls.size > 0) await Promise.allSettled([...this.pendingCalls]);
+    await Promise.allSettled([...this.queues.values()]);
+  }
 
   /** Insert a new DRAFT and schedule its 12 h expiry. */
   createDraft(input: Omit<DraftInput, "now">): EnginePlan {
@@ -166,9 +181,18 @@ export class PlanRuntime {
     }
   }
 
+  /**
+   * H5 (10.4 "Text first, then call"): every non-call effect runs first, in order, then calls
+   * start in the background. A call never blocks this plan's queue or the scheduler.
+   */
   private async performOutbound(plan: EnginePlan, effects: Effect[]): Promise<void> {
     let tracked: SentRef | null = null;
+    const calls: CallEffect[] = [];
     for (const e of effects) {
+      if (e.kind === "call") {
+        calls.push(e);
+        continue;
+      }
       try {
         switch (e.kind) {
           case "send": {
@@ -179,15 +203,6 @@ export class PlanRuntime {
           case "react":
             await this.o.out.react(e, plan);
             break;
-          case "call": {
-            const placed = await this.o.out.call(e, plan);
-            if (!placed && e.to === "user" && e.script === "fake") {
-              // 6.6 step 3: no call possible, fall back to a text in the decoy's voice.
-              repo.addPlanEvent(this.o.store, plan.id, "call_fallback", { script: e.script }, this.o.clock.now());
-              await this.o.out.send({ kind: "send", to: "user", template: "cw_call_fallback_text", notifyAnyway: true }, plan);
-            }
-            break;
-          }
           case "request_location":
             await this.o.out.requestLocation(plan);
             break;
@@ -209,5 +224,33 @@ export class PlanRuntime {
       const fresh = repo.getPlan(this.o.store, plan.id);
       if (fresh) repo.savePlan(this.o.store, { ...fresh, lastCheckinMessageId: tracked.id, lastCheckinAt: tracked.at });
     }
+    for (const c of calls) this.startCall(plan, c);
+  }
+
+  /**
+   * Run one call in the background with a hard timeout, then report it to the engine as a
+   * call_result event (fallback text for a failed fake call, honest guardian copy). H5, 6.6.
+   */
+  private startCall(plan: EnginePlan, e: CallEffect): void {
+    const timeoutMs = this.o.callTimeoutMs ?? CALL_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+      timer.unref?.();
+    });
+    const placing = Promise.resolve()
+      .then(() => this.o.out.call(e, plan))
+      .catch((err: unknown) => {
+        this.o.onError?.(err, { planId: plan.id, effect: "call" });
+        return false;
+      });
+    const task = Promise.race([placing, timeout])
+      .then(async (placed) => {
+        if (timer) clearTimeout(timer);
+        await this.dispatch(plan.id, { type: "call_result", script: e.script, placed });
+      })
+      .catch((err: unknown) => this.o.onError?.(err, { planId: plan.id, event: "call_result" }));
+    const tracked: Promise<void> = task.finally(() => this.pendingCalls.delete(tracked));
+    this.pendingCalls.add(tracked);
   }
 }
