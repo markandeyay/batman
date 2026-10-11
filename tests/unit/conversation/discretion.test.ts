@@ -22,7 +22,7 @@ describe("format checks", () => {
     expect(countEmoji("no emoji +30")).toBe(0);
   });
   it("detects em dashes", () => {
-    expect(hasEmDash("a — b")).toBe(true);
+    expect(hasEmDash("a \u2014 b")).toBe(true);
     expect(hasEmDash("a - b")).toBe(false);
   });
   it("detects markdown", () => {
@@ -39,7 +39,7 @@ describe("validateCopy (spec 9.4)", () => {
   it.each([
     ["x".repeat(281), "too_long"],
     ["**What time?**", "markdown"],
-    ["Nice — what time?", "em_dash"],
+    ["Nice \u2014 what time?", "em_dash"],
     ["What time? 🙂🙂", "too_many_emoji"],
     ["Stay safe! What time?", "banned:safe"],
     ["What time? I'll text you at 9", "ungrounded_number:9"],

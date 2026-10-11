@@ -42,7 +42,7 @@ export function countEmoji(text: string): number {
 }
 
 export function hasEmDash(text: string): boolean {
-  return /[—―⸺⸻]/.test(text);
+  return /[\u2014\u2015\u2E3A\u2E3B]/.test(text);
 }
 
 /** Markdown or list formatting that would render as literal symbols in iMessage. */
