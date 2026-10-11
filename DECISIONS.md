@@ -96,3 +96,6 @@ Format: date, decision, why, spec section affected.
 9. An alert word during an existing escalation re-sends gdn_alert once with the stronger reason, with no second call.
 10. Runtime layer (plan/runtime.ts) persists plan plus jobs in one transaction, then performs outbound effects through an OutboundPort the gateway implements.
 - Contract proposals (extra Plan fields, a guardian "plan started" template, a call_result event) are held in EnginePlan locally; contracts.ts will be updated during integration.
+
+## 2026-10-10: Spike S2 FAIL on shared pool; calls fall back to text
+- Photon returns SIP 403 for outbound calls whose From is a shared-pool number (Stable docs require a project-owned iMessage line). Enabling the `voice` platform did not change it (reverted). The executor still attempts LiveKit when capabilities.calls is true, because the 403 returns in about 1.3 s, well inside the 5 s fallback budget of spec 6.6; with a dedicated line, calls work with no code change. Spec Section 20 Q2 answered: no outbound calls on Free/Pro shared pool.
