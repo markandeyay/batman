@@ -942,6 +942,8 @@ function switchToTimeOnly(tx: Tx): void {
 function startActive(tx: Tx): void {
   const p = tx.p;
   tx.setState("ACTIVE");
+  // 4.4.2 notifyGuardianStartEnd: plan details only, no location (I4); send() skips an unaccepted guardian (I1).
+  if (p.notifyGuardianStartEnd) tx.send("guardian", "gdn_plan_started", planParams(p));
   if (p.locationMode === "findmy" && !p.shareConfirmedAt) switchToTimeOnly(tx);
   scheduleEndGrace(tx);
   if (p.type === "date" && p.firstTimeInPerson !== false && p.startAt && p.endAt && !p.flags.midCheckSent) {
