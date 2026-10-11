@@ -807,7 +807,7 @@ function onFix(tx: Tx, fix: EngineContextFix): void {
   const fixes = fixesWith(tx, fix);
   const ctx: EngineContext = { ...tx.ctx, fixes };
   tx.ctx = ctx;
-  if (!p.shareConfirmedAt && fix.source === "findmy") {
+  if (!p.shareConfirmedAt && fix.source !== "pin") {
     p.shareConfirmedAt = tx.now;
     if (p.locationMode !== "findmy") p.locationMode = "findmy";
     tx.cancel(["loc_poll", "loc_reminder"]);

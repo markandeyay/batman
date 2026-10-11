@@ -1,0 +1,22 @@
+{
+  "name": "no-share",
+  "description": "Date 2 h. The user never accepts the Find My request. Replies +30 to the overtime check at +02:20, home at +02:40.",
+  "venue": {
+    "lat": 41.9172,
+    "lng": -87.7067
+  },
+  "share": {
+    "accepted": false
+  },
+  "fixes": [],
+  "userMessages": [
+    {
+      "t": "+02:20",
+      "text": "+30"
+    },
+    {
+      "t": "+02:40",
+      "text": "home"
+    }
+  ]
+}
