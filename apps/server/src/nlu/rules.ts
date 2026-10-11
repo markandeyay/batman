@@ -38,7 +38,15 @@ const EXPLICIT_DISTRESS: readonly string[] = [
   "trapped", "locked me in", "locked in", "kidnapped", "took my phone", "took my keys", "took my wallet",
   "get me out", "get me out of here", "sos", "in danger", "threatening me", "threatened me", "has a gun", "has a knife", "pulled a knife", "pulled a gun",
   "forcing me", "forced me", "wont take no", "made me get in",
+  // M5: physical distress said to the other person
+  "get off me", "stop touching me", "leave me alone", "touch me", "grab me", "grabbing me",
 ];
+
+/**
+ * M5: harm done to the user. "dont" or "do not" right before one of these is a command to the
+ * other person ("please dont hurt me"), not a negation, so the guard does not apply.
+ */
+const HARM_ON_ME = new Set(["hurt me", "hit me", "touch me", "grab me", "hurting me", "touching me", "grabbing me", "follow me", "choke me", "kill me"]);
 
 /** Broader lexicon: anything that hints the user is not okay (9.3 post-check, fallback NOT_OK). */
 const DISTRESS_LEXICON: readonly string[] = [
@@ -70,6 +78,8 @@ function containsPhrase(normText: string, phrase: string, opts: { negationGuard:
     if (opts.negationGuard && !p.some((t) => NEGATIVE_TOKENS.has(t))) {
       const before = toks.slice(Math.max(0, i - 3), i);
       const joined = before.join(" ");
+      // M5: "dont hurt me" / "do not touch me" is said to someone else; never a negation.
+      if (HARM_ON_ME.has(phrase) && (toks[i - 1] === "dont" || (toks[i - 2] === "do" && toks[i - 1] === "not"))) return true;
       if (before.some((t) => NEGATORS.has(t)) || /\bno need( to)?$/.test(joined)) continue;
     }
     return true;
@@ -81,6 +91,8 @@ export function isExplicitDistress(text: string): boolean {
   const n = norm(text);
   if (n === "") return false;
   if (n === "help" || n === "help help" || n === "sos") return true;
+  // M5: "let me go" only when it ends the message ("let me go check" is not distress).
+  if (/(^| )let me go( please| now)*$/.test(n) && !/\b(dont|didnt|wont|not) let me go\b/.test(n)) return true;
   return EXPLICIT_DISTRESS.some((p) => containsPhrase(n, p, { negationGuard: true }));
 }
 
