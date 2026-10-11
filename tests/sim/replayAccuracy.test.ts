@@ -4,12 +4,13 @@
 // reproduces from its seed. The true transition is the first fix whose noise-free position is
 // inside (arrival) or outside (departure) the venue radius.
 //
-// Findings (reported to the main conversation, see it.fails below):
-// - Gaussian noise alone: the target holds except for slow walkers leaving a 250 m viewing
-//   geofence (1.5x hysteresis plus 2-fix confirmation is about 3 to 4 fixes at 1.4 m/s).
-// - With 3% 300 m outliers: two consecutive outliers fake a departure (spec 7.2 rule) in about
-//   3% of 40 min date and marketplace stays, and arrival occasionally takes 4 fixes. The strict
-//   "every track" target cannot hold under the 7.2 rules; the bound test guards the rates.
+// Findings (X1, 7.2 refinement: outlier rejection plus a 60 m cap on the hysteresis band):
+// - Gaussian noise alone: every type and travel mode, including slow walkers leaving a 250 m
+//   viewing geofence, is within 3 fixes.
+// - With 3% 300 m outliers: departures and arrivals are within 3 fixes in at least 98.7% of
+//   tracks (was 94.7%). The remaining date misses (seed 82: two consecutive outliers that agree
+//   with each other fake a departure; seed 118: an outlier just inside the jump threshold delays
+//   arrival to 4 fixes) are the documented gap in the it.fails below.
 import { describe, expect, it } from "vitest";
 import type { Fix, PlanType } from "../../apps/server/src/contracts.js";
 import { formatRelativeTime, materializeTrack, parseTrack } from "../../apps/server/src/location/replay.js";
@@ -99,31 +100,31 @@ const ALL: [PlanType, string, number][] = [
 ];
 
 describe("7.5 arrival and departure within 3 fixes", () => {
-  it.each(ALL.filter(([t, m]) => !(t === "viewing" && m === "walking")))(
+  it.each(ALL)(
     "%s, %s, 30 m Gaussian noise: every seeded track within 3 fixes",
     (type, _m, mps) => {
       expect(misses(measure(type, mps, GAUSSIAN_ONLY).outcomes)).toEqual([]);
     },
   );
 
-  it.each(ALL)("%s, %s, spec noise (30 m plus 3 percent 300 m outliers): at least 93 percent of tracks within 3 fixes (regression guard), no early arrival", (type, _m, mps) => {
+  it.each(ALL)("%s, %s, spec noise (30 m plus 3 percent 300 m outliers): at least 98 percent of tracks within 3 fixes (regression guard), no early arrival", (type, _m, mps) => {
     const { outcomes, outliers } = measure(type, mps, SPEC_NOISE);
     expect(outliers, "outliers are present").toBeGreaterThan(0);
     const arrOk = outcomes.filter((o) => within3(o.arrivalOff)).length / outcomes.length;
     const depOk = outcomes.filter((o) => within3(o.departureOff)).length / outcomes.length;
-    // Guard at the measured worst case (marketplace walking, 94.7% departures), not the spec target.
-    expect(arrOk).toBeGreaterThanOrEqual(0.93);
-    expect(depOk).toBeGreaterThanOrEqual(0.93);
+    // Guard at the measured worst case after X1 (marketplace walking, 98.7% departures).
+    expect(arrOk).toBeGreaterThanOrEqual(0.98);
+    expect(depOk).toBeGreaterThanOrEqual(0.98);
     // Arrival is never declared before the user is near the venue.
     expect(outcomes.every((o) => o.arrivalOff !== null && o.arrivalOff >= -1)).toBe(true);
   });
 
   // Known gaps against the strict 7.5 wording. These pass while the gap exists; if detection is
   // improved they start failing, and should become plain `it` tests.
-  it.fails("strict target, spec noise: every date track within 3 fixes (fails: consecutive outliers fake a departure)", () => {
+  it.fails("strict target, spec noise: every date track within 3 fixes (fails: 2 of 150 seeds, see findings)", () => {
     expect(misses(measure("date", WALK, SPEC_NOISE).outcomes)).toEqual([]);
   });
-  it.fails("strict target, Gaussian only: viewing walkers leave within 3 fixes (fails: 375 m hysteresis at 1.4 m/s)", () => {
+  it("strict target, Gaussian only: viewing walkers leave within 3 fixes (X1: hysteresis band capped at 60 m)", () => {
     expect(misses(measure("viewing", WALK, GAUSSIAN_ONLY).outcomes)).toEqual([]);
   });
 

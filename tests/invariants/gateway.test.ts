@@ -1,6 +1,6 @@
 // Gateway-level invariant tests (spec Section 3): I2, I3, I4, I6, I12.
 import { describe, expect, it } from "vitest";
-import type { E164, Fix, LocationSource } from "../../apps/server/src/contracts.js";
+import type { E164, Fix, LocationSource, TemplateParams } from "../../apps/server/src/contracts.js";
 import { EmergencyNumberError } from "../../apps/server/src/gateway/errors.js";
 import { FindMyLocationSource, type LocationsApi } from "../../apps/server/src/location/findmy.js";
 import { PlanRuntime } from "../../apps/server/src/plan/runtime.js";
@@ -65,18 +65,18 @@ describe("I3 time-boxed", () => {
   it("fixes are stored only while the plan is in a window, and none arrive after stop_watch", async () => {
     const { store, plan } = seededStore("ACTIVE");
     const clock = new FakeClock(T0);
-    let emit: ((f: Fix) => void) | null = null;
+    let emit: ((f: Fix, from: E164) => void) | null = null;
     const src: LocationSource = { start: async (_a, cb) => void (emit = cb), stop: async () => {} };
     const t = makeExecutor(store, clock, { createLocationSource: () => src });
     const runtime = new PlanRuntime({ store, clock, jobs: { enqueue: () => 0, cancel: () => 0 }, out: t.executor, defaultTz: "America/New_York" });
     t.executor.bind({ ingestFix: (id, f) => runtime.ingestFix(id, f), dispatch: (id, e) => runtime.dispatch(id, e) });
     await t.executor.startWatch(plan);
-    emit!(fix());
+    emit!(fix(), USER);
     await flush();
     await new Promise((r) => setTimeout(r, 5));
     expect(repo.listFixes(store, plan.id)).toHaveLength(1);
     await t.executor.stopWatch(plan);
-    emit!(fix(41.95));
+    emit!(fix(41.95), USER);
     await new Promise((r) => setTimeout(r, 5));
     expect(repo.listFixes(store, plan.id)).toHaveLength(1);
     repo.savePlan(store, { ...repo.getPlan(store, plan.id)!, state: "CLOSED" });
@@ -91,7 +91,7 @@ describe("I4 minimal disclosure", () => {
       const { store, plan } = seededStore(state);
       const t = makeExecutor(store, new FakeClock(T0));
       await t.executor.send({ kind: "send", to: "guardian", template: "gdn_location_update", params: { fix: fix() } }, plan);
-      await t.executor.send({ kind: "send", to: "user", template: "act_mid_check", params: { fix: fix(), lastFix: fix() } }, plan);
+      await t.executor.send({ kind: "send", to: "user", template: "act_mid_check", params: { fix: fix(), lastFix: fix() } as unknown as TemplateParams }, plan);
       const g = t.resolver.space(GUARDIAN).sent[0]!;
       const u = t.resolver.space(USER).sent[0]!;
       expect(u).not.toMatch(/41\.9/);

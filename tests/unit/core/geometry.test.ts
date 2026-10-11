@@ -80,7 +80,11 @@ describe("arrival (2 inside, >= 45 s apart)", () => {
   });
 
   it("an outside fix breaks the run", () => {
-    expect(detectArrival([fixFromVenue(sec(0), 50), fixFromVenue(sec(30), 400), fixFromVenue(sec(60), 50)], VENUE, 120)).toBeNull();
+    expect(detectArrival([fixFromVenue(sec(0), 50), fixFromVenue(sec(30), 250), fixFromVenue(sec(60), 50)], VENUE, 120)).toBeNull();
+  });
+
+  it("X1: a single far spike that comes straight back is an outlier and does not break the run", () => {
+    expect(detectArrival([fixFromVenue(sec(0), 50), fixFromVenue(sec(30), 400), fixFromVenue(sec(60), 50)], VENUE, 120)).toEqual(sec(60));
   });
 
   it("ignores inaccurate fixes", () => {

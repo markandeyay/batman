@@ -21,20 +21,19 @@ import type {
 import { DISCREET_STATES } from "../../apps/server/src/contracts.js";
 import { handleInbound } from "../../apps/server/src/dialogue/manager.js";
 import { handleOptinExpire } from "../../apps/server/src/dialogue/guardian.js";
-import type { DialogueEvent, DialoguePorts, PlanEditField } from "../../apps/server/src/dialogue/ports.js";
+import type { DialogueEvent, DialoguePorts } from "../../apps/server/src/dialogue/ports.js";
 import type { Geocoder, GeocodeResult } from "../../apps/server/src/geo/geocode.js";
 import { guardedFixHandler } from "../../apps/server/src/location/source.js";
 import { loadTrack, materializeTrack, type MaterializedTrack } from "../../apps/server/src/location/replay.js";
 import { FakeLlmProvider, type LlmProvider } from "../../apps/server/src/nlu/llm.js";
 import { renderTemplate, type TemplateParams } from "../../apps/server/src/notify/templates.js";
 import { PlanRuntime, type OutboundPort, type SendEffect } from "../../apps/server/src/plan/runtime.js";
-import { T_MINUS_MS } from "../../apps/server/src/plan/stateMachine.js";
 import type { EnginePlan } from "../../apps/server/src/plan/types.js";
 import { JobScheduler } from "../../apps/server/src/scheduler/jobs.js";
 import { openStore, type Store } from "../../apps/server/src/store/db.js";
 import * as repo from "../../apps/server/src/store/repo.js";
 import { FakeClock } from "../../apps/server/src/util/clock.js";
-import { StoreDialogueRepo } from "./storeDialogueRepo.js";
+import { StoreDialogueRepo } from "../../apps/server/src/store/dialogueRepo.js";
 
 export const START = new Date("2026-10-10T23:00:00Z"); // Sat 7:00 PM in New York
 export const TZ = "America/New_York";
@@ -124,11 +123,12 @@ export class FakeCallService implements CallService {
 
 /** Fake Find My source. The harness pushes track fixes into the active handler. */
 export class FakeLocationSource implements LocationSource {
-  handler: ((fix: Fix, fromAddress?: string | null) => boolean) | null = null;
+  /** The harness passes guardedFixHandler, which reports whether the fix was accepted. */
+  handler: ((fix: Fix, fromAddress: E164) => boolean) | null = null;
   address: E164 | null = null;
-  async start(userAddress: E164, onFix: (fix: Fix) => void): Promise<void> {
+  async start(userAddress: E164, onFix: (fix: Fix, fromAddress: E164) => void): Promise<void> {
     this.address = userAddress;
-    this.handler = onFix as (fix: Fix, fromAddress?: string | null) => boolean;
+    this.handler = onFix as unknown as (fix: Fix, fromAddress: E164) => boolean;
   }
   async stop(): Promise<void> {
     this.handler = null;
@@ -314,8 +314,6 @@ export class FullStack {
   private inSeq = 0;
   private evSeq = 0;
   private pendingFixes: Promise<unknown>[] = [];
-  /** GLUE: the dialogue's dispatch() has no message id; the runtime wants lastUserMessageId. */
-  private readonly lastInbound = new Map<string, string>();
 
   constructor(readonly opts: FullStackOptions = {}) {
     this.clock = new FakeClock(new Date(START.getTime() + (opts.startMin ?? -240) * MIN));
@@ -347,25 +345,23 @@ export class FullStack {
         return { visible, expiresAt: this.track?.share.expiresAt ?? null };
       },
       onError: (e) => this.errors.push(e),
-      lastUserMessageId: (plan) => this.lastInbound.get(plan.userId) ?? null,
     });
-    const prevRepo: StoreDialogueRepo | undefined = this.repo;
-    this.repo = new StoreDialogueRepo(this.store, () => this.runtime, this.clock);
-    if (prevRepo) {
-      // Side maps model tables that do not exist yet; carry them over a restart.
-      for (const [k, v] of prevRepo.optinSentAt) this.repo.optinSentAt.set(k, v);
-      for (const [k, v] of prevRepo.stopped) this.repo.stopped.set(k, v);
-      for (const [k, v] of prevRepo.dialogue) this.repo.dialogue.set(k, v);
-    }
+    // Planless jobs (guardian opt-in expiry, 4.3) through the runtime hook, as index.ts wires it.
+    this.runtime.setPlanlessJobHandler(async (job) => {
+      if (job.kind === "optin_expire" && job.payload) await handleOptinExpire(this.ports, job.payload as { userId: string; guardianId: string });
+    });
+    // The production store-backed DialogueRepo (M4): stop flags, dialogue state, and opt-in
+    // times are real tables, so they survive a restart with no carry-over.
+    this.repo = new StoreDialogueRepo(this.store, {
+      createDraft: (input) => this.runtime.createDraft(input),
+      updatePlanFields: (planId, patch) => this.runtime.updatePlanFields(planId, patch),
+      now: () => this.clock.now(),
+    });
     this.ports = this.dialoguePorts();
   }
 
   private async handleJob(job: Parameters<PlanRuntime["handleJob"]>[0]): Promise<void> {
-    if (job.planId) return this.runtime.handleJob(job);
-    // GLUE: non-plan jobs scheduled by the dialogue (guardian opt-in expiry, 4.3).
-    if (job.kind === "optin_expire" && job.payload) {
-      await handleOptinExpire(this.ports, job.payload as { userId: string; guardianId: string });
-    }
+    return this.runtime.handleJob(job);
   }
 
   roleOf(address: E164): Role {
@@ -383,21 +379,9 @@ export class FullStack {
     this.sent.push({ t: rel(this.clock.now()), at: this.clock.now(), to: this.roleOf(address), address, template, text, origin, state: this.planStateFor(address), id: ref.id, seq: ++this.evSeq, ...extra });
   }
 
-  /** GLUE: engine send params use different keys than notify/templates.ts TemplateParams. */
+  /** Engine sends carry the canonical TemplateParams (C1); the executor only adds the plan record. */
   engineParams(e: SendEffect, plan: EnginePlan): TemplateParams {
-    const p = (e.params ?? {}) as Record<string, unknown>;
-    const lastFix = p.lastFix as TemplateParams["fix"] | undefined;
-    return {
-      ...(p as TemplateParams),
-      plan,
-      tz: (p.timeZone as string | undefined) ?? TZ,
-      now: this.clock.now(),
-      type: plan.type,
-      // The engine sends reason as a kind string; templates expect the EscalationReason object.
-      reason: plan.escalationReason,
-      fix: lastFix ?? null,
-      locationMode: plan.locationMode,
-    };
+    return { plan, ...(e.params ?? {}) };
   }
 
   /** GLUE: the OutboundPort the gateway executor must implement. */
@@ -406,7 +390,7 @@ export class FullStack {
       send: async (e, plan) => {
         const address = this.addressFor(e.to, plan);
         if (!address) return null;
-        // GLUE (I14): the engine does not know about STOP; the executor drops these sends.
+        // I14 at the executor too (GatewayChannel does the same); the engine also skips stopped addresses.
         const g = plan.guardianId ? repo.getGuardian(this.store, plan.guardianId) : null;
         if (this.repo.isStoppedSync(address) || (e.to === "guardian" && g?.stoppedAt)) {
           this.dropped.push({ t: rel(this.clock.now()), address, template: e.template });
@@ -448,7 +432,7 @@ export class FullStack {
         const guarded = guardedFixHandler(user.addressE164, () => repo.getPlan(this.store, planId)?.state ?? null, (fix) => {
           this.pendingFixes.push(this.runtime.ingestFix(planId, fix));
         });
-        await this.location.start(user.addressE164, guarded as unknown as (fix: Fix) => void);
+        await this.location.start(user.addressE164, guarded);
       },
       stopWatch: async () => {
         this.watchPlanId = null;
@@ -499,42 +483,12 @@ export class FullStack {
     };
   }
 
-  /** GLUE: DialoguePorts.dispatch -> PlanRuntime.dispatch. */
+  /** DialoguePorts.dispatch -> PlanRuntime.dispatch (the runtime finds the latest inbound id itself, X2). */
   async dispatch(planId: string, event: DialogueEvent): Promise<void> {
     try {
-      if (event.type === "plan_edited") {
-        await this.applyPlanEdited(planId, event.fields);
-        return;
-      }
-      const plan = repo.getPlan(this.store, planId);
-      const last = plan ? this.lastInbound.get(plan.userId) : undefined;
-      await this.runtime.dispatch(planId, event, last ? { lastUserMessageId: last } : {});
+      await this.runtime.dispatch(planId, event);
     } catch (err) {
       this.errors.push(err);
-    }
-  }
-
-  /**
-   * GLUE: plan_edited is not an engine event. The dialogue already wrote the new fields; here
-   * the timers that depend on them are rescheduled with the same math as the engine's armPlan
-   * and scheduleEndGrace. Recommended fix: a plan_edited row in the engine.
-   */
-  private async applyPlanEdited(planId: string, fields: PlanEditField[]): Promise<void> {
-    const p = repo.getPlan(this.store, planId);
-    if (!p) return;
-    repo.addPlanEvent(this.store, planId, "plan_edited", { fields }, this.clock.now());
-    const now = this.clock.now().getTime();
-    if (fields.includes("startAt") && p.startAt && (p.state === "ARMED" || p.state === "PRE_MEETUP")) {
-      const start = p.startAt.getTime();
-      if (p.state === "ARMED") {
-        this.scheduler.cancel(planId, ["t_minus_30", "start"]);
-        this.scheduler.enqueue({ kind: "t_minus_30", runAt: new Date(Math.max(now, start - T_MINUS_MS)), planId });
-      } else this.scheduler.cancel(planId, ["start"]);
-      this.scheduler.enqueue({ kind: "start", runAt: new Date(Math.max(now, start)), planId });
-    }
-    if (p.state === "AWAITING_GUARDIAN" && fields.includes("endAt") && p.endAt) {
-      this.scheduler.cancel(planId, ["draft_expire"]);
-      this.scheduler.enqueue({ kind: "draft_expire", runAt: p.endAt, planId });
     }
   }
 
@@ -554,16 +508,15 @@ export class FullStack {
     if (!repo.markInboundProcessed(this.store, msgId, this.clock.now())) return "duplicate";
     this.inboundLog.push({ t: rel(this.clock.now()), at: this.clock.now(), id: msgId, from: address });
     this.quota.markKnown(address);
-    const u = repo.getUserByAddress(this.store, address);
-    if (u) this.lastInbound.set(u.id, msgId);
+    // As the gateway InboundLoop does: the inbound message is logged (the tapback target, X2).
+    repo.recordMessage(this.store, { platformMessageId: msgId, direction: "inbound", addressE164: address, kind: content.kind, bodyRedacted: null, sentAt: this.clock.now() });
     let route = "error";
     try {
       route = (await handleInbound(this.ports, { id: msgId, from: address, at: this.clock.now(), content })).route;
+      await this.runtime.idle(); // H5: calls run in the background; settle their call_result
     } catch (err) {
       this.errors.push(err);
     }
-    const nu = repo.getUserByAddress(this.store, address);
-    if (nu) this.lastInbound.set(nu.id, msgId);
     this.routes.push({ t: rel(this.clock.now()), from: address, route });
     await this.flushFixes();
     return route;
@@ -621,7 +574,7 @@ export class FullStack {
       await this.clock.set(new Date(next));
       if (fix && fix.getTime() <= next) {
         const f = this.track!.fixes[this.fixPtr++]!;
-        this.location.handler?.(f, this.location.address);
+        if (this.location.address) this.location.handler?.(f, this.location.address);
         await this.flushFixes();
         continue;
       }
@@ -631,6 +584,7 @@ export class FullStack {
         continue;
       }
       await this.scheduler.runDue();
+      await this.runtime.idle();
       await this.flushFixes();
     }
     if (this.clock.now().getTime() < target) await this.clock.set(new Date(target));

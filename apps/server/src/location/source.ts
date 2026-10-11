@@ -58,9 +58,10 @@ export function guardedFixHandler(
   userAddress: E164,
   planState: () => PlanState | null,
   onFix: (fix: Fix) => void,
-): (fix: Fix, fromAddress?: string | null) => boolean {
+): (fix: Fix, fromAddress: string | null) => boolean {
   return (fix, fromAddress) => {
-    if (fromAddress !== undefined && !belongsToUser(fromAddress, userAddress)) return false;
+    // L2 (I2): the address is required; a fix with no address is never forwarded.
+    if (!belongsToUser(fromAddress, userAddress)) return false;
     if (!acceptsFixInState(planState())) return false;
     onFix(fix);
     return true;

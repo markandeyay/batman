@@ -43,7 +43,7 @@ export interface ReplyResult {
   distress: boolean;
   source: "rule" | "model" | "fallback";
   /** Why a model answer was changed, for audit logs. */
-  postCheck?: "low_confidence" | "distress_lexicon" | "invalid_command";
+  postCheck?: "low_confidence" | "distress_lexicon" | "invalid_command" | "model_command";
 }
 
 function result(p: Partial<ReplyResult> & Pick<ReplyResult, "label" | "source">): ReplyResult {
@@ -154,6 +154,11 @@ export async function classifyReply(
   if (out.label === "COMMAND") {
     if (!out.command) return result({ label: "AMBIGUOUS", source: "model", confidence: out.confidence, postCheck: "invalid_command" });
     if (distressHint) return result({ label: "AMBIGUOUS", source: "model", confidence: out.confidence, postCheck: "distress_lexicon" });
+    // H1 (I7): done, home, and cancel end or close a plan; only the deterministic rule pre-pass
+    // may produce them. A model guess becomes AMBIGUOUS (the engine asks "All good?").
+    if (out.command === "done" || out.command === "home" || out.command === "cancel") {
+      return result({ label: "AMBIGUOUS", source: "model", confidence: out.confidence, postCheck: "model_command" });
+    }
     return result({
       label: "COMMAND",
       command: out.command,

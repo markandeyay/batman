@@ -68,23 +68,18 @@ export type PlanFieldPatch = Partial<
   >
 >;
 
-export type PlanEditField = "startAt" | "endAt" | "venue" | "transport" | "type" | "counterpart";
+export type { PlanEditField } from "../contracts.js";
 
-/**
- * Edit of an armed plan (spec 4.4.6 "edits after arming"). The engine must reschedule timers for
- * changed times and re-geofence a changed venue. Proposed for contracts.ts EngineEvent.
- */
-export interface PlanEditedEvent {
-  type: "plan_edited";
-  fields: PlanEditField[];
-}
+/** Edit of an armed plan (spec 4.4.6). Now a contracts.ts EngineEvent handled by the engine (H4). */
+export type PlanEditedEvent = Extract<EngineEvent, { type: "plan_edited" }>;
 
-export type DialogueEvent = EngineEvent | PlanEditedEvent;
+export type DialogueEvent = EngineEvent;
 
 /** Per-user conversational context, persisted (resumable, spec 4.2). JSON-serializable. */
 export interface DialogueState {
   pending?:
-    | { kind: "go"; planId: string }
+    /** confirmMessageId: Batman's plan_confirm message; only a tapback on it arms (L7, I1). */
+    | { kind: "go"; planId: string; confirmMessageId?: string | null }
     | { kind: "time_confirm"; planId: string; proposed: string }
     | { kind: "time_past"; planId: string; proposed: string }
     | { kind: "replace"; planId: string; text: string }
@@ -93,6 +88,10 @@ export interface DialogueState {
     | { kind: "codewords" }
     | { kind: "caller" }
     | { kind: "questions"; planId: string }
+    /** M7: "done" before the meetup starts; YES cancels. */
+    | { kind: "cancel_confirm"; planId: string }
+    /** H1: the model thought the user is moving; confirm before changing the venue. */
+    | { kind: "moving_confirm"; planId: string; venueText: string }
     | null;
   intake?: {
     planId: string;

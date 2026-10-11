@@ -5,7 +5,7 @@
 import type { E164, PlanState, SentRef, TemplateId } from "../contracts.js";
 import { DISCREET_STATES } from "../contracts.js";
 import { isDiscreet } from "../notify/discretion.js";
-import { canSendInState, type TemplateParams } from "../notify/templates.js";
+import { canSendInState, renderTemplate, valueFreeParams, type TemplateParams } from "../notify/templates.js";
 import type { DialoguePorts } from "./ports.js";
 
 export async function sendTemplate(
@@ -22,6 +22,16 @@ export async function sendTemplate(
   if (!canSendInState(template, ctx.planState ?? null)) {
     ports.log?.warn("send_blocked_discretion", { template, state: ctx.planState ?? null });
     return null;
+  }
+  // M6 (I10): check the rendered text, not just the template id. A user-typed value that is not
+  // discreet (a venue named "Police station ...") falls back to the value-free variant.
+  if (ctx.planState && DISCREET_STATES.includes(ctx.planState) && !isDiscreet(renderTemplate(template, params))) {
+    const free = valueFreeParams(params);
+    if (!isDiscreet(renderTemplate(template, free))) {
+      ports.log?.warn("send_blocked_discretion", { template, state: ctx.planState });
+      return null;
+    }
+    return ports.sendTemplate(to, template, free);
   }
   return ports.sendTemplate(to, template, params);
 }

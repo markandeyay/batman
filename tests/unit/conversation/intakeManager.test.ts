@@ -63,7 +63,7 @@ describe("intake (4.4)", () => {
     await seedUser(h);
     expect(await h.text(USER, "got a date with Jordan later")).toBe("intake_questions");
     const q = h.sentTo(USER).at(-1)!;
-    expect(q.template).toBeNull();
+    expect(q.template).toBe("intake_questions"); // routed through a fixed template (9.4)
     expect(q.text.startsWith("What time are you meeting? Where are you meeting?")).toBe(true);
     expect(q.text).toContain("I'll assume about 2 hours, tell me if it's longer.");
     expect((q.text.match(/\?/g) ?? []).length).toBeLessThanOrEqual(3);
@@ -98,7 +98,7 @@ describe("intake (4.4)", () => {
     expect(ask.template).toBe("plan_time_confirm_ask");
     expect(ask.text).toBe("Just to be sure, is that Sat 7:00 PM?");
     await h.text(USER, "yes");
-    expect(h.sentTo(USER).some((s) => s.template === "plan_confirm" || s.template === null)).toBe(true);
+    expect(h.sentTo(USER).some((s) => s.template === "plan_confirm" || s.template === "intake_questions")).toBe(true);
     expect(h.dispatched).toEqual([]);
   });
 
@@ -180,11 +180,11 @@ describe("manager routing (8.4)", () => {
     expect(h.sent).toEqual([]); // the engine sends the innocuous reply (I9)
   });
 
-  it("code words outside a window do nothing special", async () => {
+  it("code words before the window are still caught and never reach intake (H3, I8)", async () => {
     const h = makeHarness();
     const { user, guardianId } = await seedUser(h);
     await seedPlan(h, user.id, guardianId, "ARMED");
-    expect(await h.text(USER, "pineapple")).not.toMatch(/^codeword/);
+    expect(await h.text(USER, "pineapple")).toBe("codeword_exit");
   });
 
   it("voice transcripts get the phonetic pass", async () => {

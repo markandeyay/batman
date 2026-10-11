@@ -84,7 +84,7 @@ describe("6.2 DRAFT and arming (I1)", () => {
     expect(r.row).toBe("draft-go-awaiting");
     expect(r.plan.state).toBe("AWAITING_GUARDIAN");
     expect(sends(r.fx)).toEqual(["user:plan_awaiting_guardian"]);
-    expect(sched(r.fx, "draft_expire")[0]!.runAt).toEqual(at(120));
+    expect(sched(r.fx, "draft_expire")[0]!.runAt).toEqual(at(0)); // X4: expires at the start
   });
 
   it("I1: arming needs the link to be accepted in the store too, not just the event", () => {
@@ -117,7 +117,7 @@ describe("6.2 DRAFT and arming (I1)", () => {
     expect(sends(r.fx)).toEqual(["user:plan_time_confirm_ask"]);
   });
 
-  it("draft expires after 12 h; AWAITING_GUARDIAN expires when the window passes", () => {
+  it("draft expires after 12 h; AWAITING_GUARDIAN expires at the start and says so once (X4)", () => {
     const p = basePlan({ createdAt: at(-240) });
     expect(apply(p, timer("draft_expire"), ctxAt(at(-240 + 11 * 60))).plan.state).toBe("DRAFT");
     const r = apply(p, timer("draft_expire"), ctxAt(at(-240 + 12 * 60)));
@@ -126,8 +126,18 @@ describe("6.2 DRAFT and arming (I1)", () => {
     expect(sends(r.fx)).toEqual([]);
     expect(sched(r.fx, "purge")).toHaveLength(1);
     const aw = basePlan({ state: "AWAITING_GUARDIAN" });
-    expect(apply(aw, timer("draft_expire"), ctxAt(at(119))).plan.state).toBe("AWAITING_GUARDIAN");
-    expect(apply(aw, timer("draft_expire"), ctxAt(at(120))).plan.state).toBe("EXPIRED");
+    expect(apply(aw, timer("draft_expire"), ctxAt(at(-1))).plan.state).toBe("AWAITING_GUARDIAN");
+    const ex = apply(aw, timer("draft_expire"), ctxAt(at(0)));
+    expect(ex.plan.state).toBe("EXPIRED");
+    expect(sends(ex.fx)).toEqual(["user:plan_expired_unarmed"]);
+  });
+
+  it("plan_edited is handled in ARMED, PRE_MEETUP, AWAITING_GUARDIAN, and live states (H4)", () => {
+    const ev = { type: "plan_edited" as const, fields: ["startAt" as const] };
+    expect(apply(basePlan({ state: "ARMED" }), ev, ctxAt(at(-240))).row).toBe("plan-edited-armed");
+    expect(apply(basePlan({ state: "PRE_MEETUP" }), ev, ctxAt(at(-20))).row).toBe("plan-edited-premeetup");
+    expect(apply(basePlan({ state: "AWAITING_GUARDIAN" }), ev, ctxAt(at(-240))).row).toBe("plan-edited-awaiting");
+    expect(apply(basePlan({ state: "ACTIVE" }), { type: "plan_edited", fields: ["endAt"] }, ctxAt(at(30))).row).toBe("plan-edited-live");
   });
 });
 
@@ -383,10 +393,10 @@ describe("6.2 / 4.7 overtime and ladder steps (6.4)", () => {
     const r = apply(checking("L2"), timer("ladder", { step: "L3", token: at(30).toISOString() }), ctxAt(at(42), { fixes: [fixFromVenue(at(40), 500)] }));
     expect(r.plan.state).toBe("ESCALATED");
     expect(r.plan.escalationReason).toEqual({ kind: "no_reply", trigger: "T-DEP-WALK", minutesSilent: 12 });
-    expect(kinds(r.fx)).toEqual(["cancel_jobs", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
-    const alert = r.fx[1] as Extract<Effect, { kind: "send" }>;
+    expect(kinds(r.fx)).toEqual(["cancel_jobs", "cancel_jobs", "schedule", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
+    const alert = r.fx.find((e) => e.kind === "send" && e.template === "gdn_alert") as Extract<Effect, { kind: "send" }>;
     expect(alert).toMatchObject({ critical: true, notifyAnyway: true });
-    expect(alert.params).toMatchObject({ reason: "no_reply", minutesSilent: 12, lastFix: { minutesAgo: 2 }, userName: "Alex" });
+    expect(alert.params).toMatchObject({ reason: { kind: "no_reply" }, minutesSilent: 12, fix: { at: at(40) }, now: at(42), userName: "Alex" }); // fix 2 min old
     expect(sched(r.fx, "guardian_repeat")[0]!.runAt).toEqual(at(45));
     // I5 / 6.4: no user message at L3.
     expect(sends(r.fx).filter((s) => s.startsWith("user:"))).toEqual([]);
@@ -443,7 +453,7 @@ describe("6.5 replies during CHECKING / OVERTIME", () => {
     const r = apply(checking("L1"), { type: "user_reply", label: "NOT_OK", messageId: "u-9" }, ctxAt(at(36)));
     expect(r.plan.state).toBe("ESCALATED");
     expect(r.plan.escalationReason).toEqual({ kind: "not_ok_reply" });
-    expect(kinds(r.fx)).toEqual(["send:user:act_calling_you_now", "call:user:fake", "cancel_jobs", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
+    expect(kinds(r.fx)).toEqual(["send:user:act_calling_you_now", "call:user:fake", "cancel_jobs", "cancel_jobs", "schedule", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
   });
 
   it("AMBIGUOUS -> one clarifying line, timer not restarted", () => {
@@ -502,8 +512,8 @@ describe("replies in ACTIVE and ESCALATED", () => {
     expect(sched(r.fx, "risk_tick")).toHaveLength(1);
   });
 
-  it("ESCALATED by alert word + OK: guardian told, user gets only a tapback (6.7 step 4)", () => {
-    const r = apply(escalated({ escalationReason: { kind: "alert_word" } }), { type: "user_reply", label: "OK", messageId: "u-1" }, ctxAt(at(50)));
+  it("ESCALATED by alert word + deterministic okNow (C2): guardian told, user gets only a tapback (6.7 step 4)", () => {
+    const r = apply(escalated({ escalationReason: { kind: "alert_word" } }), { type: "user_reply", label: "OK", messageId: "u-1", okNow: true }, ctxAt(at(50)));
     expect(sends(r.fx)).toEqual(["guardian:gdn_user_ok_now"]);
     expect(r.fx[1]).toMatchObject({ kind: "react" });
   });
@@ -532,8 +542,28 @@ describe("6.6 exit word", () => {
     expect(r.fx).toContainEqual({ kind: "cancel_jobs", kinds: ["ladder", "overtime_timeout"] });
   });
 
-  it("outside a window it does nothing", () => {
-    expect(apply(basePlan({ state: "ARMED" }), { type: "exit_word", messageId: "u-1" }, ctxAt(at(-60))).fx).toEqual([]);
+  it("ARMED: it still rings the phone (H3), with no post-exit watch outside the window (I3)", () => {
+    const r = apply(basePlan({ state: "ARMED" }), { type: "exit_word", messageId: "u-1" }, ctxAt(at(-60)));
+    expect(r.row).toBe("exit-word-pre-window");
+    expect(kinds(r.fx)).toEqual(["send:user:cw_exit_reply", "call:user:fake"]);
+  });
+
+  it("call_result: a failed fake call sends the fallback text; a check-in result is remembered (H5)", () => {
+    const r = apply(active(), { type: "call_result", script: "fake", placed: false }, ctxAt(at(60)));
+    expect(r.row).toBe("call-result");
+    expect(sends(r.fx)).toEqual(["user:cw_call_fallback_text"]);
+    expect(sends(apply(active(), { type: "call_result", script: "fake", placed: true }, ctxAt(at(60))).fx)).toEqual([]);
+    expect(apply(active(), { type: "call_result", script: "checkin", placed: true }, ctxAt(at(60))).plan.checkinCallPlaced).toBe(true);
+  });
+
+  it("ARMED / AWAITING_GUARDIAN: alert word and distress escalate only with an accepted guardian (H3)", () => {
+    const pending = { guardian: { displayName: "Priya", linkStatus: "pending" as const, stopped: false } };
+    expect(apply(basePlan({ state: "ARMED" }), { type: "alert_word", messageId: "u" }, ctxAt(at(-60))).row).toBe("alert-word-pre-window");
+    expect(apply(basePlan({ state: "AWAITING_GUARDIAN" }), { type: "alert_word", messageId: "u" }, ctxAt(at(-60), pending)).row).toBe("alert-word-no-guardian");
+    expect(apply(basePlan({ state: "ARMED" }), { type: "distress", messageId: "u" }, ctxAt(at(-60))).row).toBe("distress-pre-window");
+    const d = apply(basePlan({ state: "AWAITING_GUARDIAN" }), { type: "distress", messageId: "u" }, ctxAt(at(-60), pending));
+    expect(d.row).toBe("distress-no-guardian");
+    expect(sends(d.fx)).toEqual(["user:no_plan_distress"]);
   });
 
   it("post-exit: still inside the venue -> T-POST-EXIT check", () => {
@@ -576,8 +606,8 @@ describe("6.7 alert word and 4.6 distress", () => {
       expect(r.row).toBe("alert-word");
       expect(r.plan.state).toBe("ESCALATED");
       expect(r.plan.escalationReason).toEqual({ kind: "alert_word" });
-      expect(kinds(r.fx)).toEqual(["send:user:cw_alert_reply", "cancel_jobs", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
-      expect(r.fx[2]).toMatchObject({ critical: true, notifyAnyway: true, params: { reason: "alert_word" } });
+      expect(kinds(r.fx)).toEqual(["send:user:cw_alert_reply", "cancel_jobs", "cancel_jobs", "schedule", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
+      expect(r.fx.find((e) => e.kind === "send" && e.template === "gdn_alert")).toMatchObject({ critical: true, notifyAnyway: true, params: { reason: { kind: "alert_word" } } });
     }
   });
 
@@ -591,14 +621,15 @@ describe("6.7 alert word and 4.6 distress", () => {
   it("distress -> ESCALATED + Calling you now + fake call + guardian alert", () => {
     const r = apply(active(), { type: "distress", messageId: "u-1" }, ctxAt(at(60)));
     expect(r.row).toBe("distress");
-    expect(kinds(r.fx)).toEqual(["send:user:act_calling_you_now", "call:user:fake", "cancel_jobs", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
+    expect(kinds(r.fx)).toEqual(["send:user:act_calling_you_now", "call:user:fake", "cancel_jobs", "cancel_jobs", "schedule", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
   });
 
   it("no guardian reachable: escalation is recorded, nothing is sent to them", () => {
     const ctx = ctxAt(at(60), { guardian: { displayName: "Priya", linkStatus: "revoked", stopped: true } });
     const r = apply(active(), { type: "alert_word", messageId: "u-1" }, ctx);
     expect(r.plan.state).toBe("ESCALATED");
-    expect(sends(r.fx)).toEqual(["user:cw_alert_reply"]);
+    // X3: the user is told once, discreetly, that the backup could not be reached.
+    expect(sends(r.fx)).toEqual(["user:cw_alert_reply", "user:usr_backup_unreachable"]);
     expect(r.fx.some((e) => e.kind === "call")).toBe(false);
   });
 });
@@ -716,7 +747,20 @@ describe("5.3 / 5.4 guardian", () => {
     const r = apply(escalated(), { type: "guardian_ack" }, ctxAt(at(44)));
     expect(r.row).toBe("guardian-ack");
     expect(r.plan.guardianAckAt).toEqual(at(44));
-    expect(r.fx).toEqual([{ kind: "cancel_jobs", kinds: ["guardian_repeat"] }, expect.objectContaining({ kind: "schedule", job: expect.objectContaining({ kind: "guardian_update", runAt: at(49) }) })]);
+    expect(r.fx).toEqual([
+      { kind: "cancel_jobs", kinds: ["guardian_repeat"] },
+      // M1: GOT IT restarts the 2 h escalation end timer.
+      { kind: "cancel_jobs", kinds: ["escalation_end"] },
+      expect.objectContaining({ kind: "schedule", job: expect.objectContaining({ kind: "escalation_end", runAt: at(44 + 120) }) }),
+      expect.objectContaining({ kind: "schedule", job: expect.objectContaining({ kind: "guardian_update", runAt: at(49) }) }),
+    ]);
+  });
+
+  it("escalation_end closes a quiet escalation (M1)", () => {
+    const p = escalated({ escalationActivityAt: at(44) });
+    const r = apply(p, timer("escalation_end", { at: at(44).toISOString() }), ctxAt(at(164)));
+    expect(r.row).toBe("escalation-end");
+    expect(r.plan.state).toBe("CLOSED");
     expect(apply(escalated({ guardianAckAt: at(44) }), timer("guardian_repeat"), ctxAt(at(46))).row).toBeNull();
   });
 
@@ -738,12 +782,12 @@ describe("5.3 / 5.4 guardian", () => {
   it("where is she: latest fix during an escalation, denied otherwise (I4)", () => {
     const r = apply(escalated(), { type: "guardian_location_request" }, ctxAt(at(45), { fixes: [fixFromVenue(at(44), 300)] }));
     expect(r.row).toBe("guardian-location");
-    expect(r.fx[0]).toMatchObject({ to: "guardian", template: "gdn_location_update", params: { lastFix: { minutesAgo: 1 } } });
+    expect(r.fx[0]).toMatchObject({ to: "guardian", template: "gdn_location_update", params: { fix: { at: at(44) }, now: at(45) } }); // fix 1 min old
     const d = apply(active(), { type: "guardian_location_request" }, ctxAt(at(45), { fixes: [fixFromVenue(at(44), 300)] }));
     expect(d.row).toBe("guardian-location-denied");
     expect(d.fx).toHaveLength(1);
     expect(d.fx[0]).toMatchObject({ template: "gdn_location_denied" });
-    expect(JSON.stringify(d.fx)).not.toMatch(/"lat"|lastFix/);
+    expect(JSON.stringify(d.fx)).not.toMatch(/"lat"|lastFix|"fix"/);
   });
 
   it("call her during an escalation -> check-in call to the user", () => {

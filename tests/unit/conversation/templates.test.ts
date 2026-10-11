@@ -143,7 +143,9 @@ describe("spec copy verbatim", () => {
     ["lad_resolved_after_escalation", "Got it, glad you're okay. I'd let Priya know too."],
     ["loc_pin_unsupported", "Can you send that as a Maps link or just type the address?"],
   ])("%s", (id, text) => {
-    expect(renderTemplate(id as TemplateId, SAMPLE, { variant: 0 })).toBe(text);
+    // H2: the spec's all-clear line is the home case; other close reasons get their own copy.
+    const params = id === "gdn_all_clear" ? { ...SAMPLE, closeReason: "home" as const } : SAMPLE;
+    expect(renderTemplate(id as TemplateId, params, { variant: 0 })).toBe(text);
   });
 
   it("rotates exit replies among the spec variants (6.6)", () => {

@@ -5,11 +5,10 @@
 // names the guardian. I1: nothing about any plan reaches the guardian before YES.
 import type { E164, Guardian, InboundContent, Plan, User } from "../contracts.js";
 import { TERMINAL_STATES, WINDOW_STATES } from "../contracts.js";
-import { EXTRA_COPY } from "../notify/templates.js";
 import { normalizeText } from "../pipeline/codewords.js";
 import { isAffirmative, isNegative } from "../nlu/rules.js";
 import { findPhonesInText, parsePhone } from "../util/phone.js";
-import { sendTemplate, sendText } from "./out.js";
+import { sendTemplate } from "./out.js";
 import type { DialoguePorts, GuardianLink } from "./ports.js";
 
 export const OPTIN_TTL_MS = 48 * 3600_000;
@@ -155,7 +154,7 @@ export async function handleGuardianInbound(
     }
     const accepted = (await ports.repo.listLinksForGuardian(guardian.id)).find((l) => l.status === "accepted");
     const name = accepted ? await userName(ports, accepted.userId) : null;
-    await sendText(ports, guardian.addressE164, EXTRA_COPY.guardian_call_outside(name ?? "them"));
+    await sendTemplate(ports, guardian.addressE164, "guardian_call_outside", { userName: name ?? "them" });
     return "guardian_call_outside";
   }
 

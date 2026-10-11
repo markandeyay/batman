@@ -44,8 +44,8 @@ describe("I16 fail toward the user", () => {
     await s.runUntil(154);
     expect(s.timeline(100)).toEqual([
       "135 send user:ot_overtime",
-      "150 call user:checkin",
       "150 send user:lad_l2_text",
+      "150 call user:checkin",
       "153 send guardian:gdn_alert",
       "153 call guardian:guardian_alert",
     ]);

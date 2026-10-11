@@ -122,7 +122,7 @@ const noop: FindMyLogger = { info: () => {}, warn: () => {} };
 export class FindMyLocationSource implements LocationSource {
   private running = false;
   private userAddress: E164 | null = null;
-  private onFix: ((fix: Fix) => void) | null = null;
+  private onFix: ((fix: Fix, fromAddress: E164) => void) | null = null;
   private stream: WatchStream | null = null;
   private stopWaiters: (() => void)[] = [];
   private readonly seenSeq = new Set<number>();
@@ -138,7 +138,7 @@ export class FindMyLocationSource implements LocationSource {
     this.log = o.logger ?? noop;
   }
 
-  async start(userAddress: E164, onFix: (fix: Fix) => void): Promise<void> {
+  async start(userAddress: E164, onFix: (fix: Fix, fromAddress: E164) => void): Promise<void> {
     if (this.running) await this.stop();
     this.running = true;
     this.userAddress = userAddress;
@@ -210,7 +210,7 @@ export class FindMyLocationSource implements LocationSource {
     if (seq === null) this.stats.heartbeatFixes++;
     else this.stats.streamUpdates++;
     try {
-      cb(fix);
+      cb(fix, loc.address as E164);
     } catch (err) {
       this.log.warn({ error: describeError(err) }, "findmy: onFix handler threw");
     }

@@ -164,7 +164,8 @@ export type InboundContent =
   | { kind: "contact"; name: string | null; phones: string[] }
   | { kind: "location"; lat: number; lng: number }
   | { kind: "reaction"; emoji: ReactionEmoji; targetMessageId: string; removed: boolean }
-  | { kind: "other" };
+  /** hint: why the content could not be used, so the dialogue answers precisely. */
+  | { kind: "other"; hint?: "location_pin_unsupported" | "unsupported_attachment" | "voice_failed" };
 
 export type ReactionEmoji = "like" | "love" | "laugh" | "emphasize" | "dislike" | "question" | "other";
 
@@ -196,7 +197,8 @@ export type JobKind =
   | "purge" // 24 h after close (I12)
   | "draft_expire" // 12 h
   | "optin_expire" // guardian opt-in 48 h
-  | "reconfirm"; // day-before reconfirm for plans > 7 days out
+  | "reconfirm" // day-before reconfirm for plans > 7 days out
+  | "escalation_end"; // M1: 2 h after the last guardian-facing activity, close an escalation
 
 export interface JobSpec {
   kind: JobKind;
@@ -214,14 +216,26 @@ export type UserCommand =
   | { command: "cancel" }
   | { command: "moving"; venueText: string; venueLat: number | null; venueLng: number | null };
 
+/** Plan fields the user can edit after arming (4.4.6). */
+export type PlanEditField = "startAt" | "endAt" | "venue" | "transport" | "type" | "counterpart";
+
 export type EngineEvent =
   | { type: "arm"; guardianAccepted: boolean }
+  /**
+   * Edit after arming (4.4.6, H4). The dialogue has already written the new fields; the engine
+   * reschedules the timers that depend on them.
+   */
+  | { type: "plan_edited"; fields: PlanEditField[] }
   | { type: "guardian_accepted" }
   | { type: "timer"; job: JobKind; payload?: Record<string, unknown> }
   | { type: "fix"; fix: Fix }
   | { type: "location_shared"; expiresAt: Date | null }
   | { type: "location_not_shared" }
-  | { type: "user_reply"; label: ReplyLabel; messageId: string }
+  /**
+   * okNow: the deterministic rule matched an explicit "I'm okay now" (6.7 step 4). Only this,
+   * never a classifier OK, ends an alert-word or distress escalation (C2, I7).
+   */
+  | { type: "user_reply"; label: ReplyLabel; messageId: string; okNow?: boolean }
   | { type: "user_reaction"; emoji: ReactionEmoji; targetMessageId: string }
   | ({ type: "user_command" } & UserCommand)
   | { type: "exit_word"; messageId: string }
@@ -231,7 +245,12 @@ export type EngineEvent =
   | { type: "guardian_stop" }
   | { type: "guardian_call_request" }
   | { type: "guardian_location_request" }
-  | { type: "internal_error"; message: string };
+  | { type: "internal_error"; message: string }
+  /**
+   * A call effect finished (H5). placed=false also covers a skipped call and the runtime's hard
+   * timeout. The engine sends the fake call fallback text and keeps guardian copy honest (I11).
+   */
+  | { type: "call_result"; script: "fake" | "checkin" | "guardian_alert"; placed: boolean };
 
 // ---------- Effects (performed by the executor) ----------
 
@@ -242,7 +261,7 @@ export type Effect =
       kind: "send";
       to: Recipient;
       template: TemplateId;
-      params?: Record<string, unknown>;
+      params?: TemplateParams;
       /** Remember the sent message id on the plan for reaction matching (check-ins). */
       track?: boolean;
       /** Call notifySilenced after sending if the recipient has Focus on (L1+, guardian alerts). */
@@ -349,8 +368,108 @@ export const TEMPLATE_IDS = [
   "delete_confirm_ask",
   "delete_done",
   "quota_onboarding_paused",
+  // dialogue lines that used to be free text (EXTRA_COPY), now fixed templates (9.4)
+  "intake_questions", // validated LLM-phrased intake questions (param questionsText) or their template fallback
+  "ask_caller",
+  "caller_set",
+  "codewords_busy",
+  "no_plan_distress",
+  "guardian_call_outside",
+  "replace_kept",
+  "delete_kept",
+  "ask_time_again",
+  "ask_new_guardian",
+  // guardian start notice for notifyGuardianStartEnd (4.4.2, 4.8)
+  "gdn_plan_started",
+  // M7: "done" before the meetup starts asks before cancelling
+  "plan_cancel_confirm_ask",
+  // X3: L3 with no reachable guardian. Discreet line in a window; plain explanation after it.
+  "usr_backup_unreachable",
+  "usr_backup_unreachable_explain",
+  // X4: a plan that never got a guardian expired at its start
+  "plan_expired_unarmed",
 ] as const;
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
+
+/**
+ * Canonical template parameters (C1). The plan engine emits exactly these keys in send effects;
+ * notify/templates.ts reads exactly these. Parameters a template may use. All optional; templates degrade gracefully. Dates may be Date
+ * objects or ISO strings (job payloads are JSON). Passing `plan` fills plan fields automatically;
+ * explicit keys override plan-derived values.
+ */
+export type TemplateParams = {
+  plan?: Partial<Plan> | null;
+  userName?: string | null;
+  guardianName?: string | null;
+  tz?: string | null;
+  now?: Date | string;
+  type?: PlanType | null;
+  startAt?: Date | string | null;
+  endAt?: Date | string | null;
+  venueText?: string | null;
+  counterpartName?: string | null;
+  counterpartSource?: string | null;
+  transport?: Transport | null;
+  buyOrSell?: "buy" | "sell" | null;
+  durationMin?: number | null;
+  /** Escalation reason (gdn_alert). Defaults to plan.escalationReason. */
+  reason?: EscalationReason | null;
+  /** Ladder trigger for reason lines, when reason is not given. */
+  trigger?: TriggerId | null;
+  minutesSilent?: number | null;
+  /** How many of Batman's texts went unanswered (gdn_alert honesty, I11). */
+  messagesUnanswered?: number | null;
+  /** Whether a check-in call was actually placed (I11: never claim a call that did not happen). */
+  callPlaced?: boolean | null;
+  /** Last usable fix for guardian alerts and updates. */
+  fix?: { lat: number; lng: number; accuracyM: number; at: Date | string } | null;
+  /** Reverse geocoded address for the fix. */
+  address?: string | null;
+  locationMode?: "findmy" | "pin" | "none" | null;
+  /** Fields whose defaults were used ("duration", "type"). */
+  defaultsUsed?: string[] | null;
+  /** One safety tip line (intake only, at most one). */
+  tip?: string | null;
+  /** plan_locked_in / plan_awaiting_guardian: the meetup starts within 30 min. */
+  soon?: boolean | null;
+  /** close_done_ack: true when the plan closed right away (no home geofence). */
+  closed?: boolean | null;
+  /** plan_edit_confirm: human readable changes, e.g. ["starts Sat 8:00 PM"]. */
+  changes?: string[] | null;
+  /** onb_codewords_invalid / onb_guardian_invalid reason id. */
+  reasonId?: string | null;
+  /** status: plan state; null = no plan. */
+  state?: PlanState | null;
+  /** plan_time_past_ask / plan_time_confirm_ask: the time to propose. */
+  suggestedStart?: Date | string | null;
+  /** loc_extend_ask: when the current share ends. */
+  expiresAt?: Date | string | null;
+  /** onb_save_contact: true when the user only changed code words (no contact card step). */
+  changeOnly?: boolean | null;
+  /** onb_guardian_text_first: the pool number assigned to the guardian, and its sms: link. */
+  assignedNumber?: string | null;
+  smsLink?: string | null;
+  /** intake_questions: the validated LLM-phrased question text (spec 9.4). */
+  questionsText?: string | null;
+  /** caller_set: the chosen decoy caller. */
+  decoyCaller?: DecoyCaller | null;
+  /** gdn_all_clear / close_done_ack: why the plan ended (H2: honest copy per reason). */
+  closeReason?: CloseReason | null;
+};
+
+/** Why a plan closed. Only "home" and "home_arrival" may say "home safe" (I11). */
+export type CloseReason =
+  | "home"
+  | "home_arrival"
+  | "home_after_alert"
+  | "done"
+  | "done_after_alert"
+  | "cancelled"
+  | "cancelled_after_alert"
+  | "timeout"
+  | "max_extension"
+  | "escalation_timeout"
+  | "expired";
 
 // ---------- Channel (spec 8.5: dialogue depends on this, not on iMessage) ----------
 
@@ -377,6 +496,7 @@ export interface CallService {
 }
 
 export interface LocationSource {
-  start(userAddress: E164, onFix: (fix: Fix) => void): Promise<void>;
+  /** onFix carries the address the fix was read for; consumers drop any other address (I2, L2). */
+  start(userAddress: E164, onFix: (fix: Fix, fromAddress: E164) => void): Promise<void>;
   stop(): Promise<void>;
 }

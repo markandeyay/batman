@@ -11,11 +11,11 @@
 //     the guardian of a plan that is ESCALATED. Coordinates in stored bodies become [loc].
 //   - I6: no call or text to an emergency number (Channel and here).
 //   - Stored outbound bodies mask the user's code words as [code] (spec 12).
-//   - Calls never block: place() runs in the background so the innocuous exit reply and every
-//     later effect go out at once. For the fake exit call, if place() resolves false the
-//     cw_call_fallback_text goes out immediately (spec 6.6 step 3, within 5 s of that result;
-//     Spike S2: shared-pool calls get SIP 403 in about 1.3 s). guardian_alert calls are skipped
-//     when speech is off (DECISIONS.md: a tone tells the guardian nothing).
+//   - call() places the call and resolves with the real result. PlanRuntime runs it in the
+//     background with a hard timeout after all texts (H5) and reports a call_result event; the
+//     engine sends the fake call fallback text (spec 6.6 step 3; Spike S2: shared-pool calls get
+//     SIP 403 in about 1.3 s). guardian_alert calls are skipped when speech is off (DECISIONS.md:
+//     a tone tells the guardian nothing).
 import { z } from "zod";
 import { WINDOW_STATES, type CallService, type Clock, type E164, type EngineEvent, type Fix, type LocationSource, type SentRef, type TemplateId } from "../contracts.js";
 import type { CallEffect, OutboundPort, ReactEffect, SendEffect } from "../plan/runtime.js";
@@ -25,6 +25,7 @@ import * as repo from "../store/repo.js";
 import type { SendOptions } from "./channel.js";
 import { StoppedRecipientError, describeError, isEmergencyNumber, last4 } from "./errors.js";
 import { dmChatGuid } from "./imessageAdvanced.js";
+import { renderForUser } from "../notify/templates.js";
 
 export type Render = (templateId: TemplateId, params: Record<string, unknown>) => string;
 
@@ -99,7 +100,6 @@ interface Recipient {
 export class GatewayExecutor implements OutboundPort {
   private sinks: ExecutorSinks | null = null;
   private readonly sources = new Map<string, LocationSource>();
-  private readonly pendingCalls = new Set<Promise<void>>();
   private readonly log: ExecutorLogger;
 
   constructor(private readonly o: ExecutorOptions) {
@@ -116,10 +116,8 @@ export class GatewayExecutor implements OutboundPort {
     this.o.locations = api;
   }
 
-  /** Resolves when background calls (and their fallbacks) have finished. Tests and shutdown. */
-  async idle(): Promise<void> {
-    while (this.pendingCalls.size > 0) await Promise.allSettled([...this.pendingCalls]);
-  }
+  /** Kept for callers: the executor no longer runs calls in the background (PlanRuntime does, H5). */
+  async idle(): Promise<void> {}
 
   private audit(planId: string, event: string, data?: Record<string, unknown>): void {
     try {
@@ -169,7 +167,13 @@ export class GatewayExecutor implements OutboundPort {
       return null;
     }
     const params = stripLocationParams({ ...this.baseParams(plan), ...(effect.params ?? {}) }, effect.to, plan);
-    const text = this.o.render(effect.template, params);
+    // M6 (I10): user copy is checked as rendered; a revealing typed value falls back to the value-free variant.
+    const text = effect.to === "user" ? renderForUser(effect.template, params, plan.state, (id, p) => this.o.render(id, p as Record<string, unknown>)) : this.o.render(effect.template, params);
+    if (text === null) {
+      this.audit(plan.id, "send_blocked_discretion", { template: effect.template });
+      this.log.warn({ planId: plan.id, template: effect.template }, "send blocked: not discreet in this state (I10)");
+      return null;
+    }
     const safety = !!effect.critical || WINDOW_STATES.includes(plan.state);
     try {
       const sent = await this.o.channel.send(r.address, text, {
@@ -217,25 +221,14 @@ export class GatewayExecutor implements OutboundPort {
     const ctx = { decoy: user?.decoyCaller ?? "roommate", userName: user?.displayName ?? "" };
     const startedAt = this.o.clock.now();
     this.audit(plan.id, "call_started", { script: effect.script, to: effect.to });
-    const task = (async () => {
-      let placed = false;
-      try {
-        placed = await this.o.calls.place(r.address, effect.script, ctx);
-      } catch (err) {
-        this.log.warn({ planId: plan.id, script: effect.script, error: describeError(err) }, "call threw; treating as not placed");
-      }
-      this.audit(plan.id, "call_result", { script: effect.script, placed, ms: this.o.clock.now().getTime() - startedAt.getTime() });
-      if (!placed && effect.to === "user" && effect.script === "fake") {
-        // 6.6 step 3: the text fallback goes out as soon as place() reports failure.
-        this.audit(plan.id, "call_fallback", { script: effect.script });
-        const fresh = repo.getPlan(this.o.store, plan.id) ?? plan;
-        await this.send({ kind: "send", to: "user", template: "cw_call_fallback_text", notifyAnyway: true, critical: true }, fresh);
-      }
-    })();
-    const tracked = task.finally(() => this.pendingCalls.delete(tracked));
-    this.pendingCalls.add(tracked);
-    // Placement started. Returning true keeps the runtime from sending a second fallback.
-    return true;
+    let placed = false;
+    try {
+      placed = await this.o.calls.place(r.address, effect.script, ctx);
+    } catch (err) {
+      this.log.warn({ planId: plan.id, script: effect.script, error: describeError(err) }, "call threw; treating as not placed");
+    }
+    this.audit(plan.id, "call_placed", { script: effect.script, placed, ms: this.o.clock.now().getTime() - startedAt.getTime() });
+    return placed;
   }
 
   async requestLocation(plan: EnginePlan): Promise<void> {
@@ -269,8 +262,12 @@ export class GatewayExecutor implements OutboundPort {
       },
     });
     this.sources.set(planId, src);
-    await src.start(r.address, (fix) => {
+    await src.start(r.address, (fix, fromAddress) => {
       if (!this.sources.has(planId)) return; // stopped: drop (I3)
+      if (fromAddress !== r.address) {
+        this.audit(planId, "fix_dropped_other_address"); // I2, L2: never stored
+        return;
+      }
       void this.sinks?.ingestFix(planId, fix).catch((err: unknown) => this.log.warn({ planId, error: describeError(err) }, "ingestFix failed"));
     });
     this.audit(planId, "watch_started");
@@ -296,8 +293,9 @@ export class GatewayExecutor implements OutboundPort {
     if (!r) return;
     const planId = plan.id;
     this.sources.set(planId, src);
-    await src.start(r.address, (fix) => {
+    await src.start(r.address, (fix, fromAddress) => {
       if (this.sources.get(planId) !== src) return;
+      if (fromAddress !== r.address) return; // I2, L2
       void this.sinks?.ingestFix(planId, fix);
     });
   }

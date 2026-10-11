@@ -22,7 +22,7 @@ describe("I11 honesty with the guardian", () => {
     const s = await escalate("date-overtime");
     const alert = s.sent.find((m) => m.template === "gdn_alert")!.text;
     expect(alert).toMatch(/^⚠️ Alex might need help\./);
-    expect(alert).toContain("hasn't answered my messages (18 min)");
+    expect(alert).toContain("hasn't answered my last 3 messages or a call (18 min)"); // the L2 call connected (call_result)
     expect(alert).toMatch(/Last location at \d{1,2}:\d{2} [AP]M \((just now|\d+ min ago), ±\d+ m\)/);
     expect(alert).toContain("If you think they're in danger, call 911.");
     for (const m of s.guardianSends()) expect(m.text, m.text).not.toMatch(CERTAINTY);

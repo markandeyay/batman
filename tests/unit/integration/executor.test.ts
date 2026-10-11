@@ -1,7 +1,7 @@
 // Gateway executor: every Effect kind, the 5 s exit-call fallback (spec 6.6 step 3), guardian
 // alert call skipped without speech, stop checks (I14), and PlanRuntime integration.
 import { describe, expect, it } from "vitest";
-import type { Fix, LocationSource } from "../../../apps/server/src/contracts.js";
+import type { E164, Fix, LocationSource } from "../../../apps/server/src/contracts.js";
 import { TargetNotAllowedError } from "../../../apps/server/src/gateway/errors.js";
 import { maskForStorage } from "../../../apps/server/src/gateway/executor.js";
 import { PlanRuntime } from "../../../apps/server/src/plan/runtime.js";
@@ -69,34 +69,39 @@ describe("GatewayExecutor effects", () => {
     expect(got).toEqual(["👍"]);
   });
 
-  it("fake exit call never blocks; place() false sends cw_call_fallback_text within 5 s of that result", async () => {
+  it("fake exit call never blocks the runtime; place() false sends cw_call_fallback_text within 5 s of that result (H5)", async () => {
     const { store, plan } = seededStore("ACTIVE");
-    const t = makeExecutor(store, new FakeClock(T0));
+    const clock = new FakeClock(T0);
+    const t = makeExecutor(store, clock);
     const d = deferred<boolean>();
     t.setPlace(() => d.promise);
-    const startedCall = await t.executor.call({ kind: "call", to: "user", script: "fake" }, plan);
-    expect(startedCall).toBe(true); // returned before place() resolved
+    const runtime = new PlanRuntime({ store, clock, jobs: { enqueue: () => 0, cancel: () => 0 }, out: t.executor, defaultTz: "America/New_York" });
+    await runtime.dispatch(plan.id, { type: "exit_word", messageId: "spc-msg-in" }); // returns before place() resolved
     expect(t.placed).toEqual([{ to: USER, script: "fake" }]);
     const resolvedAt = Date.now();
     d.resolve(false); // e.g. SIP 403 after about 1.3 s on the shared pool
-    await t.executor.idle();
+    await runtime.idle();
     expect(Date.now() - resolvedAt).toBeLessThan(5000);
-    expect(t.resolver.space(USER).sent).toEqual(["cw_call_fallback_text"]);
-    expect(events(store, plan.id)).toEqual(expect.arrayContaining(["call_started", "call_result", "call_fallback", "outbound"]));
+    expect(t.resolver.space(USER).sent).toEqual(["cw_exit_reply", "cw_call_fallback_text"]);
+    expect(events(store, plan.id)).toEqual(expect.arrayContaining(["call_started", "call_placed", "call_result", "call_fallback", "outbound"]));
   });
 
   it("place() true sends no fallback; a throwing CallService counts as not placed", async () => {
     const { store, plan } = seededStore("ACTIVE");
-    const t = makeExecutor(store, new FakeClock(T0));
-    await t.executor.call({ kind: "call", to: "user", script: "fake" }, plan);
-    await t.executor.idle();
-    expect(t.resolver.space(USER).sent).toEqual([]);
+    const clock = new FakeClock(T0);
+    const t = makeExecutor(store, clock);
+    const runtime = new PlanRuntime({ store, clock, jobs: { enqueue: () => 0, cancel: () => 0 }, out: t.executor, defaultTz: "America/New_York" });
+    expect(await t.executor.call({ kind: "call", to: "user", script: "fake" }, plan)).toBe(true);
+    await runtime.dispatch(plan.id, { type: "exit_word", messageId: "m1" });
+    await runtime.idle();
+    expect(t.resolver.space(USER).sent).toEqual(["cw_exit_reply"]);
     t.setPlace(async () => {
       throw new Error("boom");
     });
-    await t.executor.call({ kind: "call", to: "user", script: "fake" }, plan);
-    await t.executor.idle();
-    expect(t.resolver.space(USER).sent).toEqual(["cw_call_fallback_text"]);
+    expect(await t.executor.call({ kind: "call", to: "user", script: "fake" }, plan)).toBe(false);
+    await runtime.dispatch(plan.id, { type: "exit_word", messageId: "m2" });
+    await runtime.idle();
+    expect(t.resolver.space(USER).sent.filter((x) => x === "cw_call_fallback_text")).toHaveLength(1);
   });
 
   it("checkin call failure sends no fallback (the engine already sends lad_l2_text)", async () => {
@@ -135,7 +140,7 @@ describe("GatewayExecutor effects", () => {
 
   it("start_watch/stop_watch run one LocationSource per plan and feed fixes to the runtime sink", async () => {
     const { store, plan } = seededStore("ACTIVE");
-    let emit: ((f: Fix) => void) | null = null;
+    let emit: ((f: Fix, from: E164) => void) | null = null;
     let stopped = 0;
     let shareEnded: (() => void) | null = null;
     const src: LocationSource = {
@@ -154,10 +159,10 @@ describe("GatewayExecutor effects", () => {
     t.executor.bind({ ingestFix: async (id) => void ingested.push(id), dispatch: async (_id, e) => void dispatched.push(e.type) });
     await t.executor.startWatch(plan);
     await t.executor.startWatch(plan); // idempotent
-    emit!({ lat: 1, lng: 2, accuracyM: 10, at: T0, locationType: "shallow", expiresAt: null, source: "findmy" });
+    emit!({ lat: 1, lng: 2, accuracyM: 10, at: T0, locationType: "shallow", expiresAt: null, source: "findmy" }, USER);
     shareEnded!();
     await t.executor.stopWatch(plan);
-    emit!({ lat: 1, lng: 2, accuracyM: 10, at: T0, locationType: "shallow", expiresAt: null, source: "findmy" });
+    emit!({ lat: 1, lng: 2, accuracyM: 10, at: T0, locationType: "shallow", expiresAt: null, source: "findmy" }, USER);
     expect(ingested).toEqual([plan.id]);
     expect(dispatched).toEqual(["location_not_shared"]);
     expect(stopped).toBe(1);
@@ -176,7 +181,7 @@ describe("executor with PlanRuntime", () => {
     await runtime.dispatch(plan.id, { type: "exit_word", messageId: "spc-msg-in" });
     expect(t.resolver.space(USER).sent).toEqual(["cw_exit_reply"]); // dispatch finished before place() resolved
     d.resolve(false);
-    await t.executor.idle();
+    await runtime.idle();
     expect(t.resolver.space(USER).sent).toEqual(["cw_exit_reply", "cw_call_fallback_text"]);
   });
 

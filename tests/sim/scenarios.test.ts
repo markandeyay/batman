@@ -67,8 +67,8 @@ describe("15.3 scenarios", () => {
     expect(s.timeline(1)).toEqual([
       "135 send user:ot_overtime",
       "145 send user:lad_l1",
-      "150 call user:checkin",
       "150 send user:lad_l2_text",
+      "150 call user:checkin",
       "153 send guardian:gdn_alert",
       "153 call guardian:guardian_alert",
       "156 send guardian:gdn_alert_repeat",
@@ -79,8 +79,10 @@ describe("15.3 scenarios", () => {
     const alert = s.out.find((o) => o.template === "gdn_alert")!;
     expect(alert).toMatchObject({ critical: true, notifyAnyway: true });
     // I11: the alert states what is known (time silent, last fix age), never certainty.
-    expect(alert.params).toMatchObject({ reason: "no_reply", trigger: "T-OVR", minutesSilent: 18, userName: "Alex", venueText: "Lula Cafe" });
-    expect((alert.params?.lastFix as { minutesAgo: number }).minutesAgo).toBe(0);
+    expect(alert.params).toMatchObject({ reason: { kind: "no_reply", trigger: "T-OVR" }, trigger: "T-OVR", minutesSilent: 18, userName: "Alex", venueText: "Lula Cafe" });
+    // The fix is current (0 min old) at alert time.
+    const ap = alert.params as { fix: { at: Date }; now: Date };
+    expect(ap.fix.at.getTime()).toBe(ap.now.getTime());
     expect(s.out.filter((o) => o.template === "lad_l1" || o.template === "lad_l2_text").every((o) => o.notifyAnyway)).toBe(true);
     // 6.4: no user messages after L3.
     expect(s.sends(153).filter((x) => x.startsWith("user:"))).toEqual([]);
@@ -109,11 +111,11 @@ describe("15.3 scenarios", () => {
     expect(s.timeline(1)).toEqual([
       "135 send user:ot_overtime",
       "140 send user:act_calling_you_now",
-      "140 call user:fake",
       "140 send guardian:gdn_alert",
+      "140 call user:fake",
       "140 call guardian:guardian_alert",
     ]);
-    expect(s.out.find((o) => o.template === "gdn_alert")!.params?.reason).toBe("not_ok_reply");
+    expect(s.out.find((o) => o.template === "gdn_alert")!.params?.reason).toEqual({ kind: "not_ok_reply" });
   });
 
   it("S-05 with calls down: the exit call falls back to a text (6.6 step 3)", async () => {
@@ -121,10 +123,10 @@ describe("15.3 scenarios", () => {
     await s.runUntil(141);
     expect(s.timeline(139)).toEqual([
       "140 send user:act_calling_you_now",
-      "140 call user:fake",
-      "140 send user:cw_call_fallback_text",
       "140 send guardian:gdn_alert",
+      "140 call user:fake",
       "140 call guardian:guardian_alert",
+      "140 send user:cw_call_fallback_text",
     ]);
   });
 
@@ -138,7 +140,7 @@ describe("15.3 scenarios", () => {
     await s.runUntil(149.9);
     expect(s.timeline(146)).toEqual([]);
     await s.runUntil(151);
-    expect(s.timeline(146)).toEqual(["150 call user:checkin", "150 send user:lad_l2_text"]);
+    expect(s.timeline(146)).toEqual(["150 send user:lad_l2_text", "150 call user:checkin"]);
     expect(s.sends().filter((x) => x === "user:lad_l1")).toHaveLength(1);
   });
 
@@ -157,13 +159,13 @@ describe("15.3 scenarios", () => {
     expect(s.timeline(1)).toEqual([
       "10 send user:lad_l0_hard",
       "11.8 send user:lad_l1", // hard T1 3 min x 0.6
-      "13 call user:checkin", // T2 2 min x 0.6
-      "13 send user:lad_l2_text",
+      "13 send user:lad_l2_text", // T2 2 min x 0.6
+      "13 call user:checkin",
       "14.2 send guardian:gdn_alert", // T3 2 min x 0.6
       "14.2 call guardian:guardian_alert",
       "17.2 send guardian:gdn_alert_repeat",
     ]);
-    expect(s.out.find((o) => o.template === "gdn_alert")!.params).toMatchObject({ reason: "no_reply", trigger: "T-DEP-CAR" });
+    expect(s.out.find((o) => o.template === "gdn_alert")!.params).toMatchObject({ reason: { kind: "no_reply", trigger: "T-DEP-CAR" }, trigger: "T-DEP-CAR" });
   });
 
   it("S-09: date, walk to a bar 400 m away, stay 30 min -> New spot only, no ladder when answered", async () => {
@@ -219,12 +221,12 @@ describe("15.3 scenarios", () => {
     expect(s.timeline(100)).toEqual([
       "135 send user:ot_overtime",
       "145 send user:lad_l1",
-      "150 call user:checkin",
       "150 send user:lad_l2_text",
+      "150 call user:checkin",
       "153 send guardian:gdn_alert",
       "153 call guardian:guardian_alert",
     ]);
-    expect(s.out.find((o) => o.template === "gdn_alert")!.params?.lastFix).toBeNull();
+    expect(s.out.find((o) => o.template === "gdn_alert")!.params?.fix).toBeNull();
   });
 
   it("S-21: list() returns another person's location -> ignored (I2)", async () => {
@@ -269,8 +271,8 @@ describe("15.3 scenarios", () => {
     expect(s.timeline(100)).toEqual([
       "150 send user:ot_overtime",
       "160 send user:lad_l1",
-      "165 call user:checkin",
       "165 send user:lad_l2_text",
+      "165 call user:checkin",
       "168 send guardian:gdn_alert",
       "168 call guardian:guardian_alert",
     ]);

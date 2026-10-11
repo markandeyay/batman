@@ -9,7 +9,7 @@ import type { Store } from "../store/db.js";
 import * as repo from "../store/repo.js";
 import { buildContext } from "./context.js";
 import { newDraftPlan, type DraftInput } from "./factory.js";
-import { acceptsFixes, applyEvent, type EngineOutput } from "./stateMachine.js";
+import { acceptsFixes, applyEvent, canMessageGuardian, type EngineOutput } from "./stateMachine.js";
 import type { EngineContext, EnginePlan } from "./types.js";
 
 export type SendEffect = Extract<Effect, { kind: "send" }>;
@@ -21,7 +21,10 @@ export interface OutboundPort {
   /** Render and send a template. Returns the sent message ref (for check-in tracking) or null. */
   send(effect: SendEffect, plan: EnginePlan): Promise<SentRef | null>;
   react(effect: ReactEffect, plan: EnginePlan): Promise<void>;
-  /** Returns false if no call could be placed. */
+  /**
+   * Place a call and resolve with whether it was placed (false: skipped or failed). May take as
+   * long as the call itself; the runtime never awaits it inline (H5) and bounds it with a timeout.
+   */
   call(effect: CallEffect, plan: EnginePlan): Promise<boolean>;
   requestLocation(plan: EnginePlan): Promise<void>;
   startWatch(plan: EnginePlan): Promise<void>;
@@ -48,15 +51,54 @@ export interface PlanRuntimeOptions {
   lastUserMessageId?: (plan: EnginePlan) => string | null;
   /** Override night detection (tests). */
   night?: boolean;
+  /** The pure engine (tests inject a failing one to exercise I16 paths). Default applyEvent. */
+  engine?: typeof applyEvent;
+  /** Audit events that must be logged at critical level (M7: escalation with no reachable guardian). */
+  onCritical?: (event: string, info: { planId: string; data?: Record<string, unknown> }) => void;
+  /** Hard real-time bound on one call placement (H5). Default 60 s. A timeout counts as not placed. */
+  callTimeoutMs?: number;
   onError?: (err: unknown, info: { planId: string; event?: string; effect?: string }) => void;
 }
 
 const SHARE_JOBS: readonly JobKind[] = ["loc_poll", "t_minus_30"];
 
+export const CALL_TIMEOUT_MS = 60_000;
+/** M2: undelivered calls older than this are not placed on boot. */
+export const STALE_CALL_MS = 5 * 60_000;
+
+/** An outbound effect with its outbox id (M2). */
+interface OutboxItem {
+  id: string;
+  seq: number;
+  effect: Effect;
+}
+
+const OUTBOUND_KINDS: readonly Effect["kind"][] = ["send", "react", "call", "request_location", "start_watch", "stop_watch"];
+function isOutbound(e: Effect): boolean {
+  return OUTBOUND_KINDS.includes(e.kind);
+}
+
+/** Engine audit events that the runtime reports through onCritical (M7, X3). */
+export const CRITICAL_AUDITS: readonly string[] = ["escalation_no_guardian", "escalation_guardian_lost", "fallback_guardian_alert", "fallback_guardian_alert_unreachable"];
+
+/** Events whose handler must never fail silently toward the guardian (M3): L3, alert word, distress. */
+function safetyCritical(event: EngineEvent): boolean {
+  if (event.type === "alert_word" || event.type === "distress") return true;
+  return event.type === "timer" && event.job === "ladder" && event.payload?.step === "L3";
+}
+
 export class PlanRuntime {
   private readonly queues = new Map<string, Promise<unknown>>();
+  /** Calls running in the background, with their call_result dispatch (H5). */
+  private readonly pendingCalls = new Set<Promise<void>>();
 
   constructor(private readonly o: PlanRuntimeOptions) {}
+
+  /** Resolves when background calls and their call_result events have finished (tests, shutdown). */
+  async idle(): Promise<void> {
+    while (this.pendingCalls.size > 0) await Promise.allSettled([...this.pendingCalls]);
+    await Promise.allSettled([...this.queues.values()]);
+  }
 
   /** Insert a new DRAFT and schedule its 12 h expiry. */
   createDraft(input: Omit<DraftInput, "now">): EnginePlan {
@@ -66,6 +108,19 @@ export class PlanRuntime {
       for (const e of effects) this.applyInternal(plan.id, e);
     })();
     return plan;
+  }
+
+  /**
+   * Edit non-state plan fields through this plan's queue (X2: never interleaves with a running
+   * dispatch). The dialogue then dispatches plan_edited so the engine reschedules (H4).
+   */
+  updatePlanFields(planId: string, patch: Partial<EnginePlan>): Promise<void> {
+    return this.serial(planId, async () => {
+      const p = repo.getPlan(this.o.store, planId);
+      if (!p) return;
+      const { state: _s, id: _i, userId: _u, ...safe } = patch;
+      repo.savePlan(this.o.store, { ...p, ...safe, updatedAt: this.o.clock.now() });
+    });
   }
 
   /** Apply one event to a plan, persist, and perform effects. Serialized per plan. */
@@ -85,8 +140,18 @@ export class PlanRuntime {
   }
 
   /** Scheduler handler. Plan jobs become timer events; the engine re-checks state (idempotent). */
+  private planless: ((job: JobRecord) => Promise<void>) | null = null;
+
+  /** X2: jobs without a plan (guardian opt-in expiry, 4.3) go here; index.ts wires the dialogue. */
+  setPlanlessJobHandler(fn: (job: JobRecord) => Promise<void>): void {
+    this.planless = fn;
+  }
+
   async handleJob(job: JobRecord): Promise<void> {
-    if (!job.planId) return;
+    if (!job.planId) {
+      if (this.planless) await this.planless(job);
+      return;
+    }
     const planId = job.planId;
     const event: EngineEvent = job.payload ? { type: "timer", job: job.kind, payload: job.payload } : { type: "timer", job: job.kind };
     await this.serial(planId, async () => {
@@ -125,25 +190,53 @@ export class PlanRuntime {
     const plan = repo.getPlan(this.o.store, planId);
     if (!plan) return null;
     const now = this.o.clock.now();
-    const ctx = buildContext(this.o.store, plan, now, this.o.defaultTz, this.o.night === undefined ? extra : { ...extra, night: this.o.night });
     let out: EngineOutput;
     try {
-      out = applyEvent(plan, event, ctx);
+      const ctx = buildContext(this.o.store, plan, now, this.o.defaultTz, this.o.night === undefined ? extra : { ...extra, night: this.o.night });
+      out = (this.o.engine ?? applyEvent)(plan, event, ctx);
     } catch (err) {
       this.o.onError?.(err, { planId, event: event.type });
-      // I16: fail toward the user with a plain check-in, then let the caller retry.
+      // M3: an L3, alert word, or distress handler that throws still reaches the guardian, once.
+      if (safetyCritical(event)) await this.fallbackGuardianAlert(plan, event).catch((e2: unknown) => this.o.onError?.(e2, { planId, effect: "fallback_guardian_alert" }));
+      // I16: fail toward the user with a plain check-in (the engine rate-limits it), then let the caller retry.
       if (event.type !== "internal_error" && acceptsFixes(plan.state)) {
         await this.dispatchNow(planId, { type: "internal_error", message: err instanceof Error ? err.message : String(err) }, {});
       }
       throw err;
     }
-    // Persist the new plan and internal effects atomically, before anything leaves the process.
+    // Persist the new plan, internal effects, and the outbound effects (M2 outbox) atomically,
+    // before anything leaves the process. A crash after this commit is replayed on boot.
+    const rows: OutboxItem[] = out.effects.filter(isOutbound).map((effect, seq) => ({ id: repo.newId(), seq, effect }));
     this.o.store.sqlite.transaction(() => {
       repo.savePlan(this.o.store, out.plan);
       for (const e of out.effects) this.applyInternal(planId, e);
+      repo.insertOutbox(this.o.store, rows.map((r) => ({ ...r, planId, createdAt: now })));
     })();
-    await this.performOutbound(out.plan, out.effects);
+    await this.performOutbound(out.plan, rows);
     return out;
+  }
+
+  /**
+   * M3 fallback path: the engine failed on a safety-critical event. Send one minimal, fixed
+   * gdn_alert (no location, I4) if the guardian accepted and has not stopped (I1, I14).
+   */
+  private async fallbackGuardianAlert(plan: EnginePlan, event: EngineEvent): Promise<void> {
+    if (repo.listPlanEvents(this.o.store, plan.id).some((e) => e.kind === "fallback_guardian_alert" || e.kind === "fallback_guardian_alert_unreachable")) return;
+    const now = this.o.clock.now();
+    const ctx = buildContext(this.o.store, plan, now, this.o.defaultTz);
+    const reason =
+      event.type === "alert_word"
+        ? ({ kind: "alert_word" } as const)
+        : event.type === "distress"
+          ? ({ kind: "distress" } as const)
+          : ({ kind: "no_reply", trigger: plan.ladderTrigger ?? "T-OVR", minutesSilent: Math.max(0, Math.round((now.getTime() - (plan.ladderStartedAt ?? now).getTime()) / 60_000)) } as const);
+    if (!canMessageGuardian(plan, ctx)) {
+      this.applyInternal(plan.id, { kind: "audit", event: "fallback_guardian_alert_unreachable", data: { reason: reason.kind } });
+      return;
+    }
+    this.applyInternal(plan.id, { kind: "audit", event: "fallback_guardian_alert", data: { reason: reason.kind, event: event.type } });
+    const params = { tz: ctx.timeZone, now, userName: ctx.user.displayName, guardianName: ctx.guardian?.displayName ?? null, reason, type: plan.type, locationMode: "none" as const };
+    await this.o.out.send({ kind: "send", to: "guardian", template: "gdn_alert", params, critical: true, notifyAnyway: true }, plan);
   }
 
   private applyInternal(planId: string, e: Effect): void {
@@ -157,6 +250,7 @@ export class PlanRuntime {
         break;
       case "audit":
         repo.addPlanEvent(this.o.store, planId, e.event, e.data, now);
+        if (CRITICAL_AUDITS.includes(e.event)) this.o.onCritical?.(e.event, e.data ? { planId, data: e.data } : { planId });
         break;
       case "purge_location":
         repo.purgePlanLocation(this.o.store, planId);
@@ -166,9 +260,21 @@ export class PlanRuntime {
     }
   }
 
-  private async performOutbound(plan: EnginePlan, effects: Effect[]): Promise<void> {
+  /**
+   * H5 (10.4 "Text first, then call"): every non-call effect runs first, in order, then calls
+   * start in the background. A call never blocks this plan's queue or the scheduler.
+   */
+  private async performOutbound(plan: EnginePlan, rows: readonly OutboxItem[]): Promise<void> {
     let tracked: SentRef | null = null;
-    for (const e of effects) {
+    const calls: OutboxItem[] = [];
+    for (const row of rows) {
+      const e = row.effect;
+      if (e.kind === "call") {
+        calls.push(row);
+        continue;
+      }
+      // M2: idempotent by effect id; a row another drain already took is skipped.
+      if (!repo.claimOutbox(this.o.store, row.id)) continue;
       try {
         switch (e.kind) {
           case "send": {
@@ -179,15 +285,6 @@ export class PlanRuntime {
           case "react":
             await this.o.out.react(e, plan);
             break;
-          case "call": {
-            const placed = await this.o.out.call(e, plan);
-            if (!placed && e.to === "user" && e.script === "fake") {
-              // 6.6 step 3: no call possible, fall back to a text in the decoy's voice.
-              repo.addPlanEvent(this.o.store, plan.id, "call_fallback", { script: e.script }, this.o.clock.now());
-              await this.o.out.send({ kind: "send", to: "user", template: "cw_call_fallback_text", notifyAnyway: true }, plan);
-            }
-            break;
-          }
           case "request_location":
             await this.o.out.requestLocation(plan);
             break;
@@ -204,10 +301,77 @@ export class PlanRuntime {
         // One failed effect never blocks the rest of the safety sequence.
         this.o.onError?.(err, { planId: plan.id, effect: e.kind });
       }
+      repo.markOutboxDone(this.o.store, row.id, this.o.clock.now());
     }
     if (tracked) {
       const fresh = repo.getPlan(this.o.store, plan.id);
       if (fresh) repo.savePlan(this.o.store, { ...fresh, lastCheckinMessageId: tracked.id, lastCheckinAt: tracked.at });
     }
+    for (const c of calls) {
+      if (!repo.claimOutbox(this.o.store, c.id)) continue;
+      this.startCall(plan, c.effect as CallEffect);
+      repo.markOutboxDone(this.o.store, c.id, this.o.clock.now());
+    }
+  }
+
+  /**
+   * Boot (M2, I16): deliver outbox rows that a crash left undelivered, oldest first, through the
+   * per-plan queue. Rows for deleted plans are dropped; calls older than STALE_CALL_MS are not
+   * placed (a fake call long after the exit word helps no one) but texts always go out.
+   */
+  async replayOutbox(): Promise<number> {
+    repo.resetSendingOutbox(this.o.store);
+    const byPlan = new Map<string, repo.OutboxRow[]>();
+    for (const r of repo.listPendingOutbox(this.o.store)) byPlan.set(r.planId, [...(byPlan.get(r.planId) ?? []), r]);
+    let n = 0;
+    for (const [planId, list] of byPlan) {
+      await this.serial(planId, async () => {
+        const plan = repo.getPlan(this.o.store, planId);
+        const now = this.o.clock.now();
+        const live: OutboxItem[] = [];
+        for (const r of list) {
+          const stale = r.effect.kind === "call" && now.getTime() - r.createdAt.getTime() > STALE_CALL_MS;
+          if (!plan || stale) {
+            repo.markOutboxDone(this.o.store, r.id, now);
+            if (plan) repo.addPlanEvent(this.o.store, planId, "outbox_call_dropped_stale", { script: (r.effect as CallEffect).script }, now);
+            continue;
+          }
+          live.push({ id: r.id, seq: r.seq, effect: r.effect });
+        }
+        if (plan && live.length > 0) {
+          repo.addPlanEvent(this.o.store, planId, "outbox_replayed", { count: live.length }, now);
+          await this.performOutbound(plan, live);
+          n += live.length;
+        }
+      });
+    }
+    return n;
+  }
+
+  /**
+   * Run one call in the background with a hard timeout, then report it to the engine as a
+   * call_result event (fallback text for a failed fake call, honest guardian copy). H5, 6.6.
+   */
+  private startCall(plan: EnginePlan, e: CallEffect): void {
+    const timeoutMs = this.o.callTimeoutMs ?? CALL_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+      timer.unref?.();
+    });
+    const placing = Promise.resolve()
+      .then(() => this.o.out.call(e, plan))
+      .catch((err: unknown) => {
+        this.o.onError?.(err, { planId: plan.id, effect: "call" });
+        return false;
+      });
+    const task = Promise.race([placing, timeout])
+      .then(async (placed) => {
+        if (timer) clearTimeout(timer);
+        await this.dispatch(plan.id, { type: "call_result", script: e.script, placed });
+      })
+      .catch((err: unknown) => this.o.onError?.(err, { planId: plan.id, event: "call_result" }));
+    const tracked: Promise<void> = task.finally(() => this.pendingCalls.delete(tracked));
+    this.pendingCalls.add(tracked);
   }
 }

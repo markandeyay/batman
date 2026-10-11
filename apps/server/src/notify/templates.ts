@@ -3,76 +3,23 @@
 // Plain text only, no markdown, no em dashes, at most one emoji per message. Guardian alerts use
 // only the leading warning sign. Copy reachable in DISCREET_STATES never uses banned words (I10).
 import type {
+  DecoyCaller,
   EscalationReason,
   Plan,
   PlanState,
-  PlanType,
   TemplateId,
+  TemplateParams,
   Transport,
   TriggerId,
 } from "../contracts.js";
 import { TEMPLATE_IDS } from "../contracts.js";
 import { FALLBACK_TZ, formatClock, formatClockRange, formatDayTime, isValidTz } from "../geo/timezone.js";
 import { formatPhoneForDisplay } from "../util/phone.js";
+import { isDiscreet } from "./discretion.js";
 
-/**
- * Parameters a template may use. All optional; templates degrade gracefully. Dates may be Date
- * objects or ISO strings (job payloads are JSON). Passing `plan` fills plan fields automatically;
- * explicit keys override plan-derived values.
- */
-export interface TemplateParams {
-  plan?: Partial<Plan> | null;
-  userName?: string | null;
-  guardianName?: string | null;
-  tz?: string | null;
-  now?: Date | string;
-  type?: PlanType | null;
-  startAt?: Date | string | null;
-  endAt?: Date | string | null;
-  venueText?: string | null;
-  counterpartName?: string | null;
-  counterpartSource?: string | null;
-  transport?: Transport | null;
-  buyOrSell?: "buy" | "sell" | null;
-  durationMin?: number | null;
-  /** Escalation reason (gdn_alert). Defaults to plan.escalationReason. */
-  reason?: EscalationReason | null;
-  /** Ladder trigger for reason lines, when reason is not given. */
-  trigger?: TriggerId | null;
-  minutesSilent?: number | null;
-  /** How many of Batman's texts went unanswered (gdn_alert honesty, I11). */
-  messagesUnanswered?: number | null;
-  /** Whether a check-in call was actually placed (I11: never claim a call that did not happen). */
-  callPlaced?: boolean | null;
-  /** Last usable fix for guardian alerts and updates. */
-  fix?: { lat: number; lng: number; accuracyM: number; at: Date | string } | null;
-  /** Reverse geocoded address for the fix. */
-  address?: string | null;
-  locationMode?: "findmy" | "pin" | "none" | null;
-  /** Fields whose defaults were used ("duration", "type"). */
-  defaultsUsed?: string[] | null;
-  /** One safety tip line (intake only, at most one). */
-  tip?: string | null;
-  /** plan_locked_in / plan_awaiting_guardian: the meetup starts within 30 min. */
-  soon?: boolean | null;
-  /** close_done_ack: true when the plan closed right away (no home geofence). */
-  closed?: boolean | null;
-  /** plan_edit_confirm: human readable changes, e.g. ["starts Sat 8:00 PM"]. */
-  changes?: string[] | null;
-  /** onb_codewords_invalid / onb_guardian_invalid reason id. */
-  reasonId?: string | null;
-  /** status: plan state; null = no plan. */
-  state?: PlanState | null;
-  /** plan_time_past_ask / plan_time_confirm_ask: the time to propose. */
-  suggestedStart?: Date | string | null;
-  /** loc_extend_ask: when the current share ends. */
-  expiresAt?: Date | string | null;
-  /** onb_save_contact: true when the user only changed code words (no contact card step). */
-  changeOnly?: boolean | null;
-  /** onb_guardian_text_first: the pool number assigned to the guardian, and its sms: link. */
-  assignedNumber?: string | null;
-  smsLink?: string | null;
-}
+// TemplateParams and CloseReason live in contracts.ts (C1: the one canonical shape the engine
+// emits and these templates read; the engine may not import notify/, I7 guard).
+export type { CloseReason, TemplateParams } from "../contracts.js";
 
 type Variant = (c: Ctx) => string;
 
@@ -316,6 +263,51 @@ function reasonLine(c: Ctx): string {
   }
 }
 
+/** L6 (I11): the repeat headline names the real reason; only a no-reply escalation claims silence. */
+function repeatHeadline(c: Ctx, reason: EscalationReason | null, mins: number | null): string {
+  switch (reason?.kind) {
+    case "alert_word":
+      return `⚠️ Reminder: ${c.user} sent me their private alert word and may not be able to talk.`;
+    case "distress":
+      return `⚠️ Reminder: ${c.user} texted me that they don't feel safe.`;
+    case "not_ok_reply":
+      return `⚠️ Reminder: ${c.user} replied in a way that sounded like they're not okay.`;
+    default:
+      return `⚠️ Still no reply from ${c.user}${mins !== null ? ` (${minutesText(Math.round(mins))})` : ""}.`;
+  }
+}
+
+const WORRIED = "If you're still worried, keep trying to reach them, and call 911 if you think they're in danger.";
+
+/** H2 (I11, 4.8): the guardian all-clear states how the plan ended and never claims more. */
+function allClearLine(c: Ctx): string {
+  const u = c.user;
+  const thanks = "Thanks for being their backup.";
+  switch (c.p.closeReason) {
+    case "home":
+    case "home_arrival":
+      return `${u} is home safe. ${thanks}`;
+    case "home_after_alert":
+      return `${u} texted me that they're home. ${thanks}`;
+    case "done":
+      return `${u} told me the meetup is over and they're heading out. ${thanks}`;
+    case "done_after_alert":
+      return `${u} texted me that they're done and heading out, so I've stopped watching. I can't confirm they're okay. ${WORRIED}`;
+    case "cancelled":
+      return `${u} ended the plan, so I've stopped looking out for them. ${thanks}`;
+    case "cancelled_after_alert":
+      return `${u} ended the plan after my alert, so I've stopped watching. I can't confirm they're okay. ${WORRIED}`;
+    case "timeout":
+      return `${u} told me they were heading out, but I didn't see them get home within 90 minutes. I've stopped watching, so I can't confirm they made it home.`;
+    case "max_extension":
+      return `${u} replied that they're okay after a long meetup, so I've closed the plan. ${thanks}`;
+    case "escalation_timeout":
+      return `It's been 2 hours since my last update about ${u}, so I've stopped watching their location. I can't confirm they're okay. ${WORRIED}`;
+    default:
+      return `${u}'s plan has ended. ${thanks}`;
+  }
+}
+
 function planLine(c: Ctx): string {
   const venue = venueShort(c);
   const start = c.startAt;
@@ -343,6 +335,8 @@ const GUARDIAN_INVALID_REASONS: Record<string, string> = {
   stopped: "That person asked me not to text them. Want to add someone else?",
   unreachable: "I can't reach that number right now. Want to try someone else?",
 };
+
+const DISCREET: readonly PlanState[] = ["ACTIVE", "OVERTIME", "CHECKING", "ESCALATED", "CLOSING"];
 
 const STATE_LINES: Partial<Record<PlanState, (c: Ctx) => string>> = {
   DRAFT: () => "Still setting this one up.",
@@ -423,7 +417,12 @@ const T: Record<TemplateId, Variant[]> = {
   usr_guardian_in: [(c) => `${c.guardianCap}'s in. 👍`],
   usr_guardian_declined: [(c) => `${c.guardianCap} declined, want to add someone else?`],
   usr_guardian_expired: [(c) => `${c.guardianCap} hasn't answered in 48 hours. Want to add someone else as your backup?`],
-  usr_guardian_stopped: [(c) => `${c.guardianCap} opted out of being your backup. Want to add someone else?`],
+  usr_guardian_stopped: [
+    (c) =>
+      c.p.state && DISCREET.includes(c.p.state)
+        ? `Heads up, ${clean(c.p.guardianName) ?? "they"} can't anymore. Want to add someone else? Send their name and number.`
+        : `${c.guardianCap} opted out of being your backup. Want to add someone else?`,
+  ],
 
   // ---------- intake and arming (4.4) ----------
   plan_confirm: [
@@ -535,9 +534,10 @@ const T: Record<TemplateId, Variant[]> = {
     (c) => {
       const fix = c.p.fix;
       const at = fix ? c.date(fix.at) : null;
-      const mins = silentMinutes(c, c.p.reason ?? c.p.plan?.escalationReason ?? null);
+      const reason = c.p.reason ?? c.p.plan?.escalationReason ?? null;
+      const mins = silentMinutes(c, reason);
       return lines(
-        `⚠️ Still no reply from ${c.user}${mins !== null ? ` (${minutesText(Math.round(mins))})` : ""}.`,
+        repeatHeadline(c, reason, mins),
         fix && at ? `Last location at ${c.clock(at)} (${minutesAgo(c, at)}): ${appleMapsLink(fix.lat, fix.lng, c.user)}` : null,
         `Please call ${c.user} now. Reply GOT IT so I know you're on it.`,
       );
@@ -557,7 +557,8 @@ const T: Record<TemplateId, Variant[]> = {
   ],
   gdn_user_ok: [(c) => `Update: ${c.user} just replied that they're okay.`],
   gdn_user_ok_now: [(c) => `${c.user} says they're okay now.`],
-  gdn_all_clear: [(c) => `${c.user} is home safe. Thanks for being their backup.`],
+  // H2 (I11): "home safe" only for a home reply or a detected home arrival.
+  gdn_all_clear: [(c) => allClearLine(c)],
   gdn_location_denied: [() => "I only share location during an alert."],
   gdn_call_unavailable: [(c) => `I couldn't place a call to ${c.user} right now. Please try calling them yourself.`],
 
@@ -585,6 +586,35 @@ const T: Record<TemplateId, Variant[]> = {
   delete_confirm_ask: [() => "This deletes your account, plans, and backup info for good. Reply YES to confirm, or anything else to keep it."],
   delete_done: [() => "Done, I deleted everything. Text me anytime if you want to start over."],
   quota_onboarding_paused: [() => "Hey, I'm full for new people today. Can you text me again tomorrow?"],
+
+  // ---------- former EXTRA_COPY lines (9.4: fixed templates) ----------
+  intake_questions: [(c) => clean(c.p.questionsText) ?? "What time is it, and where?"],
+  ask_caller: [() => "Who should the fake call come from: mom, roommate, or boss?"],
+  caller_set: [(c) => `Done, calls will come from "${c.p.decoyCaller ?? "roommate"}".`],
+  codewords_busy: [() => "Let's do that after this one wraps up."],
+  no_plan_distress: [() => "If you're in danger right now, call 911. I can only look out for you during a meetup you've told me about."],
+  guardian_call_outside: [(c) => `I can only call ${clean(c.p.userName) ?? "them"} during a meetup they told me about.`],
+  replace_kept: [() => "Okay, keeping your current plan."],
+  delete_kept: [() => "Okay, nothing deleted."],
+  ask_time_again: [() => "No problem, what time is it?"],
+  ask_new_guardian: [() => "Who should be your new backup? Send their name and number, or share their contact card."],
+
+  // ---------- guardian start notice (4.4.2 notifyGuardianStartEnd). No location (I4). ----------
+  gdn_plan_started: [
+    (c) => lines(`Heads up: ${c.user} is starting ${meetupNoun(c)}.`, planLine(c), "I'll text you when it's over. You'll only hear from me sooner if they might need help."),
+  ],
+
+  // ---------- M7, X3, X4 ----------
+  plan_cancel_confirm_ask: [(c) => `Want me to cancel your plan for ${c.dayTime(c.startAt)}? Reply YES to cancel or NO to keep it.`],
+  // Discreet (I10): reads like a friend's text on a lock screen.
+  usr_backup_unreachable: [(c) => `Couldn't get hold of ${clean(c.p.guardianName) ?? "them"}. Text me when you can.`],
+  // Plain explanation, only outside a window or once the user replies.
+  usr_backup_unreachable_explain: [
+    (c) => `Heads up: earlier I tried to reach ${c.guardian} for you and couldn't. If you need help right now, call 911. Want to add a different backup?`,
+  ],
+  plan_expired_unarmed: [
+    (c) => `Your plan for ${c.dayTime(c.startAt)} expired because ${c.guardian} never said yes to being your backup. Text me if you want to set up another one.`,
+  ],
 };
 
 /** Templates sent to the guardian (not to the user). */
@@ -600,6 +630,8 @@ export const GUARDIAN_TEMPLATES: readonly TemplateId[] = [
   "gdn_all_clear",
   "gdn_location_denied",
   "gdn_call_unavailable",
+  "guardian_call_outside",
+  "gdn_plan_started",
 ];
 
 /** User-facing templates that are never sent inside a window (onboarding, intake, help). */
@@ -618,6 +650,10 @@ const PRE_WINDOW_ONLY: readonly TemplateId[] = [
   "plan_confirm",
   "help",
   "quota_onboarding_paused",
+  "intake_questions",
+  "no_plan_distress",
+  "usr_backup_unreachable_explain",
+  "plan_expired_unarmed",
 ];
 
 /**
@@ -635,6 +671,35 @@ export function canSendInState(id: TemplateId, state: PlanState | null): boolean
     return DISCREET_TEMPLATES.includes(id);
   }
   return true;
+}
+
+/** Param keys that carry text the user (or a geocoder) supplied; dropped for the value-free variant (M6). */
+const VALUE_KEYS = ["venueText", "counterpartName", "counterpartSource", "address", "changes", "tip", "questionsText"] as const;
+
+/** M6: the same params with every user-supplied value removed (also from the embedded plan). */
+export function valueFreeParams(params: TemplateParams | Record<string, unknown>): TemplateParams {
+  const out: Record<string, unknown> = { ...params };
+  for (const k of VALUE_KEYS) delete out[k];
+  const plan = (params as TemplateParams).plan;
+  if (plan) out.plan = { ...plan, venueText: null, counterpartName: null, counterpartSource: null };
+  return out as TemplateParams;
+}
+
+/**
+ * M6 (I10): render user-facing copy and check the RENDERED text in discreet states. If a value
+ * the user typed makes it indiscreet, fall back to the value-free variant; if that still is not
+ * discreet, return null (the caller drops the send and logs it).
+ */
+export function renderForUser(
+  id: TemplateId,
+  params: TemplateParams | Record<string, unknown>,
+  state: PlanState | null | undefined,
+  render: (id: TemplateId, params: TemplateParams | Record<string, unknown>) => string = (i, p) => renderTemplate(i, p),
+): string | null {
+  const text = render(id, params);
+  if (!state || !DISCREET.includes(state) || isDiscreet(text)) return text;
+  const alt = render(id, valueFreeParams(params));
+  return isDiscreet(alt) ? alt : null;
 }
 
 export function variantCount(id: TemplateId): number {
@@ -661,19 +726,18 @@ export function renderAllVariants(id: TemplateId, params: TemplateParams | Recor
   return T[id].map((v) => v(new Ctx(params as TemplateParams)));
 }
 
-// ---------- Extra copy the dialogue layer needs that has no TemplateId yet ----------
-// Proposed for contracts.ts TEMPLATE_IDS; sent through DialoguePorts.sendText until then.
+// ---------- Former free-text dialogue lines, now TemplateIds (kept for callers and tests) ----------
 
 export const EXTRA_COPY = {
-  ask_caller: () => "Who should the fake call come from: mom, roommate, or boss?",
-  caller_set: (who: string) => `Done, calls will come from "${who}".`,
-  codewords_busy: () => "Let's do that after this one wraps up.",
-  no_plan_distress: () => "If you're in danger right now, call 911. I can only look out for you during a meetup you've told me about.",
-  guardian_call_outside: (user: string) => `I can only call ${user} during a meetup they told me about.`,
-  replace_kept: () => "Okay, keeping your current plan.",
-  delete_kept: () => "Okay, nothing deleted.",
-  ask_time_again: () => "No problem, what time is it?",
-  ask_new_guardian: () => "Who should be your new backup? Send their name and number, or share their contact card.",
+  ask_caller: () => renderTemplate("ask_caller"),
+  caller_set: (who: string) => renderTemplate("caller_set", { decoyCaller: who as DecoyCaller }),
+  codewords_busy: () => renderTemplate("codewords_busy"),
+  no_plan_distress: () => renderTemplate("no_plan_distress"),
+  guardian_call_outside: (user: string) => renderTemplate("guardian_call_outside", { userName: user }),
+  replace_kept: () => renderTemplate("replace_kept"),
+  delete_kept: () => renderTemplate("delete_kept"),
+  ask_time_again: () => renderTemplate("ask_time_again"),
+  ask_new_guardian: () => renderTemplate("ask_new_guardian"),
 } as const;
 
 export type ExtraCopyId = keyof typeof EXTRA_COPY;

@@ -109,8 +109,8 @@ describe("15.3 full stack scenarios", () => {
     expect(s.timeline(1)).toEqual([
       "135 send user:ot_overtime",
       "145 send user:lad_l1",
-      "150 call user:checkin",
       "150 send user:lad_l2_text",
+      "150 call user:checkin",
       "153 send guardian:gdn_alert",
       "153 call guardian:guardian_alert",
       "156 send guardian:gdn_alert_repeat",
@@ -123,7 +123,7 @@ describe("15.3 full stack scenarios", () => {
     expect(alert).toMatchObject({ critical: true, notifyAnyway: true, address: GUARDIAN });
     expect(alert.text.split("\n")).toEqual([
       "⚠️ Alex might need help.",
-      "Alex hasn't answered my messages (18 min) during a date with Jordan (Hinge).",
+      "Alex hasn't answered my last 3 messages or a call (18 min) during a date with Jordan (Hinge).",
       expect.stringMatching(/^Last location at 9:33 PM \(just now, ±20 m\)$/),
       expect.stringMatching(/^https:\/\/maps\.apple\.com\/\?ll=41\.91\d\d,-87\.70\d\d&q=Alex$/),
       "Plan: Lula Cafe, 7:00 to 9:00 PM. Alex is driving themselves.",
@@ -154,8 +154,8 @@ describe("15.3 full stack scenarios", () => {
     expect(s.timeline(1)).toEqual([
       "135 send user:ot_overtime",
       "140 send user:act_calling_you_now",
-      "140 call user:fake",
       "140 send guardian:gdn_alert",
+      "140 call user:fake",
       "140 call guardian:guardian_alert",
     ]);
     expect(s.routes.at(-1)!.route).toBe("reply_not_ok");
@@ -209,7 +209,8 @@ describe("15.3 full stack scenarios", () => {
       "90 send user:close_glad_back",
       "90 send guardian:gdn_all_clear",
     ]);
-    expect(s.sent.find((m) => m.template === "gdn_all_clear")!.text).toBe("Alex is home safe. Thanks for being their backup.");
+    // H2: after an alert the guardian hears what Alex said, not a claim that they are safe.
+    expect(s.sent.find((m) => m.template === "gdn_all_clear")!.text).toBe("Alex texted me that they're home. Thanks for being their backup.");
     expect(s.plan()!.state).toBe("CLOSED");
   });
 
@@ -226,13 +227,14 @@ describe("15.3 full stack scenarios", () => {
     s.at(60, "user", "pineapples are gross");
     await s.runUntil(61);
     expect(s.routes.at(-1)!.route).toBe("codeword_exit");
-    // Outside a window (plan ARMED, not yet started) code words are not matched (8.4 step 7).
+    // H3 (I8): before the window (plan ARMED) code words are matched too; the exit word still
+    // rings the phone, and the text never reaches intake.
     const t = new FullStack({ llm: llmScript() });
     sims.push(t);
     await t.onboard();
     await t.planDate();
-    expect(await t.text("user", "pineapples are gross")).not.toMatch(/^codeword/);
-    expect(t.callLog).toEqual([]);
+    expect(await t.text("user", "pineapples are gross")).toBe("codeword_exit");
+    expect(t.callLog.map((c) => c.script)).toEqual(["fake"]);
   });
 
   it("S-16: voice note during a check yields voice_unavailable; a transcript with the alert word alerts", async () => {
@@ -267,7 +269,9 @@ describe("15.3 full stack scenarios", () => {
     expect(s.sent.at(-1)!.text).toContain("Priya hasn't said yes to being your backup yet, so I can't lock this in until they do.");
     await s.runUntil(200);
     expect(s.transitions()).toEqual(["DRAFT->AWAITING_GUARDIAN", "AWAITING_GUARDIAN->EXPIRED"]);
-    expect(s.sends(-239)).toEqual([]); // no location request, no arrival, no ladder
+    // No location request, no arrival, no ladder; X4: one line at the start saying it expired.
+    expect(s.sends(-239)).toEqual(["user:plan_expired_unarmed"]);
+    expect(s.sent.at(-1)!.t).toBe(0);
     // I1: the guardian never texted Batman, so Batman never texted them.
     expect(s.guardianSends()).toEqual([]);
   });
@@ -296,10 +300,11 @@ describe("15.3 full stack scenarios", () => {
       "30 send user:usr_guardian_stopped",
       "135 send user:ot_overtime",
       "145 send user:lad_l1",
-      "150 call user:checkin",
       "150 send user:lad_l2_text",
+      "150 call user:checkin",
+      "153 send user:usr_backup_unreachable", // X3: discreet, once
     ]);
-    expect(s.sent.find((m) => m.template === "usr_guardian_stopped")!.text).toBe("Priya opted out of being your backup. Want to add someone else?");
+    expect(s.sent.find((m) => m.template === "usr_guardian_stopped")!.text).toBe("Heads up, Priya can't anymore. Want to add someone else? Send their name and number."); // discreet: the plan is ACTIVE (I10)
     // The ladder still reaches L3, but nothing goes to the stopped guardian.
     expect(s.plan()!.state).toBe("ESCALATED");
     expect(s.sends(31, "guardian")).toEqual([]);
@@ -311,7 +316,7 @@ describe("15.3 full stack scenarios", () => {
     const s = await dateSim({ track: "date-normal", trackMessages: false });
     s.at(60, "user", "he won't let me leave");
     await s.runUntil(61);
-    expect(s.timeline(59)).toEqual(["60 send user:act_calling_you_now", "60 call user:fake", "60 send guardian:gdn_alert", "60 call guardian:guardian_alert"]);
+    expect(s.timeline(59)).toEqual(["60 send user:act_calling_you_now", "60 send guardian:gdn_alert", "60 call user:fake", "60 call guardian:guardian_alert"]);
     expect(s.routes.at(-1)!.route).toBe("distress");
     const alert = s.sent.find((m) => m.template === "gdn_alert")!.text;
     expect(alert).toContain("Alex texted me that they don't feel safe.");
@@ -473,7 +478,9 @@ describe("full stack: replies, tapbacks, edits, dedupe", () => {
     s.at(30, "user", "stop");
     await s.runUntil(200);
     expect(s.timeline(29)).toEqual(["30 send user:stop_ack"]);
-    expect(s.dropped.map((d) => d.template)).toEqual(["plan_cancelled"]);
+    // X2: the engine itself skips sends to a stopped user, so nothing even reaches the executor.
+    expect(s.dropped).toEqual([]);
+    expect(repo.listPlanEvents(s.store, s.plan()!.id).some((e) => e.kind === "user_send_skipped_stopped" && e.data?.template === "plan_cancelled")).toBe(true);
     expect(s.plan()!.state).toBe("CANCELLED");
   });
 
