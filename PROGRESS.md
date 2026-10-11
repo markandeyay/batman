@@ -4,10 +4,10 @@ Resume file for Batman. A fresh Claude Code session must be able to continue fro
 Spec: docs/BATMAN_SPEC.md. Decisions: DECISIONS.md. Verified APIs: docs/PHOTON_NOTES.md.
 
 ## Current phase
-All components merged to main; pnpm verify green (875 tests + 2 expected-fail accuracy gaps). Spikes done (docs/SPIKES.md).
-In progress: one engineer fixing all 21 safety-review findings (docs/reviews/2026-10-10-safety-phases-1-4.md) plus X1 to X4 (GPS outlier rejection, removing sim glue, guardian-unreachable handling, AWAITING_GUARDIAN expiry), in a worktree.
-Hosting: Fly.io app batman-safety created, volume batman_data created, 34 secrets staged (docs/DEPLOY.md). Deploy with `fly deploy --ha=false` once index.ts exists.
-Next after that merges: write apps/server/src/index.ts (wire dialogue manager to app.ts using the GLUE in tests/sim/fullstack.ts as blueprint), run pnpm chat, rerun safety-reviewer, then live onboarding from the human iPhone and the guided session (16.4). Refinement loop per 16.5 with the S6 fallback (no probe).
+DEPLOYED: Batman runs on Fly.io (app batman-safety, machine 863669fee9e558, iad) since 2026-10-11 02:19 UTC; logs show "Batman is listening". Do NOT run pnpm dev locally against the Batman project while it runs.
+All code merged; pnpm verify green (1066 tests + 1 expected-fail). Safety review findings all fixed. index.ts wires the dialogue manager to app.ts.
+Next: live onboarding from the human iPhone against the cloud server; second safety-reviewer pass on the gateway and index.ts; guided iPhone session (16.4); README demo notes; landing page (separate repo, human to provide stuci.ink repo).
+Ops: logs via flyctl logs -a batman-safety; redeploy via flyctl deploy --ha=false --remote-only -a batman-safety (flyctl.exe is under %LOCALAPPDATA%MicrosoftWinGetPackagesFly-io.flyctl_*).
 
 ## Done (2026-10-10)
 - Repo, .gitignore, .gitattributes, CLAUDE.md, .claude/settings.json, .claude/agents/*.md (spec 13). Deny rule narrowed so .env.example is readable.
