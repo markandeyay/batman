@@ -16,13 +16,25 @@ export function onboardingStep(user: User): OnboardingStep {
   return (ONBOARDING_STEPS as readonly string[]).includes(user.onboardingStep) ? (user.onboardingStep as OnboardingStep) : "ask_name";
 }
 
-/** First message from an unknown address (spec 4.2 trigger). */
-export async function startOnboarding(ports: DialoguePorts, from: E164): Promise<string> {
+/**
+ * First message from an unknown address (spec 4.2 trigger). If the first message already
+ * introduces the person ("Hi, I'm Robin"), greet them by name and skip the name question
+ * instead of asking for something they just said (spec 4.4.3 spirit: never ask for what the
+ * user already said).
+ */
+export async function startOnboarding(ports: DialoguePorts, from: E164, firstText: string | null = null): Promise<string> {
   if (ports.config.allowNewConversation && !(await ports.config.allowNewConversation())) {
     await ports.sendTemplate(from, "quota_onboarding_paused");
     return "onboarding_quota";
   }
   const user = await ports.repo.createUser(from, ports.clock.now());
+  const introduced = firstText ? parseIntroducedName(firstText) : null;
+  if (introduced) {
+    await ports.repo.updateUser(user.id, { displayName: introduced, onboardingStep: "ask_guardian" });
+    await sendTemplate(ports, from, "onb_hello", { userName: introduced });
+    await sendTemplate(ports, from, "onb_ask_guardian", { quickSetup: true });
+    return "onboarding_start_named";
+  }
   await ports.repo.updateUser(user.id, { onboardingStep: "ask_name" });
   await sendTemplate(ports, from, "onb_hello");
   await sendTemplate(ports, from, "onb_ask_name");
@@ -30,6 +42,21 @@ export async function startOnboarding(ports: DialoguePorts, from: E164): Promise
 }
 
 const NAME_PREFIX = /^(?:(?:hi|hey|hello|yo|sup)[\s,!.]+)?(?:i'?m|i am|my name is|my name'?s|name'?s|call me|it'?s|this is|you can call me)\s+/i;
+const EXPLICIT_INTRO = /^(?:(?:hi|hey|hello|yo|sup|hiya|howdy)(?:\s+there)?[\s,!.]+)?(?:i'?m|i am|my name is|my name'?s|call me|this is|you can call me)\s+\S/i;
+
+/**
+ * A name only when the message is an explicit self-introduction ("Hi, I'm Robin", "my name is
+ * Robin"). A bare greeting like "hi" or "hey there" is not a name.
+ */
+export function parseIntroducedName(text: string): string | null {
+  const t = text.trim();
+  if (!EXPLICIT_INTRO.test(t)) return null;
+  const name = parseName(t);
+  if (!name) return null;
+  // "I'm on a date" or "I'm going out" is not a name.
+  if (/^(on|going|at|in|here|good|fine|ok|okay|new|meeting|looking|not|so|just|trying)\b/i.test(name)) return null;
+  return name;
+}
 
 /** "I'm alex!" -> "Alex". Returns null when the reply does not look like a name. */
 export function parseName(text: string): string | null {

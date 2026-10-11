@@ -111,7 +111,7 @@ async function route_(ports: DialoguePorts, msg: InboundMessage): Promise<string
 
   // 6. Unknown address: onboarding (4.2).
   if (await ports.repo.isStopped(from)) return "stopped_unknown_ignored";
-  return startOnboarding(ports, from);
+  return startOnboarding(ports, from, text);
 }
 
 async function handleStop(

@@ -410,6 +410,8 @@ export type TemplateId = (typeof TEMPLATE_IDS)[number];
 export type TemplateParams = {
   plan?: Partial<Plan> | null;
   userName?: string | null;
+  /** onb_ask_guardian: prefix "Quick setup, takes a minute." when the name step was skipped. */
+  quickSetup?: boolean;
   guardianName?: string | null;
   tz?: string | null;
   now?: Date | string;

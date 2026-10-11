@@ -386,13 +386,15 @@ const STATE_LINES: Partial<Record<PlanState, (c: Ctx) => string>> = {
 const T: Record<TemplateId, Variant[]> = {
   // ---------- onboarding (4.2) ----------
   onb_hello: [
-    () =>
-      "Hey, I'm Batman. Text me before you meet someone new (a date, a Marketplace pickup, an apartment viewing) and I'll quietly look out for you.",
+    (c) =>
+      `Hey${clean(c.p.userName) ? ` ${clean(c.p.userName)}` : ""}, I'm Batman. Text me before you meet someone new (a date, a Marketplace pickup, an apartment viewing) and I'll quietly look out for you.`,
   ],
   onb_ask_name: [() => "Quick setup, takes a minute. What should I call you?"],
   onb_ask_guardian: [
     (c) =>
-      `Nice to meet you, ${clean(c.p.userName) ?? "friend"}. Who should I contact if you might need help? Send me their name and number, or share their contact card.`,
+      c.p.quickSetup
+        ? "Quick setup, takes a minute. Who should I contact if you might need help? Send me their name and number, or share their contact card."
+        : `Nice to meet you, ${clean(c.p.userName) ?? "friend"}. Who should I contact if you might need help? Send me their name and number, or share their contact card.`,
   ],
   onb_guardian_texting: [
     (c) =>
