@@ -18,10 +18,23 @@ export function redactPhones(s: string): string {
 }
 
 /** Deep-clean a log argument. Exported for tests. */
+/** L1: maps links and coordinate pairs inside free text (alert bodies, error messages). */
+const MAPS_URL_RE = /https?:\/\/(?:[\w-]+\.)*(?:maps\.apple\.com|maps\.google\.[a-z.]+|google\.[a-z.]+\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)\S*/gi;
+const COORD_PAIR_RE = /-?\d{1,3}\.\d{3,}\s*(?:,|%2C)\s*-?\d{1,3}\.\d{3,}/gi;
+
+export function scrubCoordinates(s: string): string {
+  return s.replace(MAPS_URL_RE, "[maps link]").replace(COORD_PAIR_RE, "[loc]");
+}
+
+function cleanString(s: string, dropCoords: boolean): string {
+  const r = redactPhones(s);
+  return dropCoords ? scrubCoordinates(r) : r;
+}
+
 export function scrub(value: unknown, dropCoords: boolean, depth = 0): unknown {
   if (depth > 6) return "[depth]";
-  if (typeof value === "string") return redactPhones(value);
-  if (value instanceof Error) return { name: value.name, message: redactPhones(value.message) };
+  if (typeof value === "string") return cleanString(value, dropCoords);
+  if (value instanceof Error) return { name: value.name, message: cleanString(value.message, dropCoords) };
   if (Array.isArray(value)) return value.map((v) => scrub(v, dropCoords, depth + 1));
   if (value && typeof value === "object" && !(value instanceof Date)) {
     const out: Record<string, unknown> = {};
