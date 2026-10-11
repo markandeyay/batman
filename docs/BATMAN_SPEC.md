@@ -1176,7 +1176,7 @@ Times are relative to plan start. The replay engine applies noise deterministica
 | S-11 | Viewing, indoor GPS drifting 180 m | no false departure (radius 250 m + hysteresis) |
 | S-12 ★ | Exit word mid-date | innocuous reply < 2 s; call placed < 20 s; post-exit watch |
 | S-13 ★ | Alert word | innocuous reply; guardian text + call < 15 s; no user-facing hint |
-| S-14 | Exit word with one typo ("pinaple") | detected (≥ 5 letters, distance 1) |
+| S-14 | Exit word with one typo ("pinapple") | detected (≥ 5 letters, distance 1) |
 | S-15 | Benign message "pineapples are gross" | token "pineapples" is distance 1 from "pineapple" so it **matches**; the test documents this, and onboarding validation steers users to unusual words |
 | S-16 ★ | Voice note containing the alert word | transcribed; alert flow |
 | S-17 | No Find My share | time-only mode; overtime works; no location triggers |
