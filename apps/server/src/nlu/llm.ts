@@ -56,6 +56,8 @@ export interface AnthropicProviderOptions {
   apiKey: string;
   modelSmart: string;
   modelFast: string;
+  /** Sent as the anthropic-workspace-id header when the key is not scoped to a workspace. */
+  workspaceId?: string;
 }
 
 /**
@@ -67,7 +69,12 @@ export class AnthropicProvider implements LlmProvider {
   readonly name = "anthropic";
   private readonly client: Anthropic;
   constructor(private readonly opts: AnthropicProviderOptions) {
-    this.client = new Anthropic({ apiKey: opts.apiKey, maxRetries: 0 });
+    this.client = new Anthropic({
+      apiKey: opts.apiKey,
+      maxRetries: 0,
+      // Keys not scoped to a workspace must name one (API returns 400 otherwise).
+      ...(opts.workspaceId ? { defaultHeaders: { "anthropic-workspace-id": opts.workspaceId } } : {}),
+    });
   }
 
   async parse<S extends z.ZodType>(req: LlmRequest<S>): Promise<z.infer<S>> {
@@ -101,6 +108,7 @@ export class OpenAIProviderStub implements LlmProvider {
 export interface LlmEnv {
   LLM_PROVIDER?: string | undefined;
   ANTHROPIC_API_KEY?: string | undefined;
+  ANTHROPIC_WORKSPACE_ID?: string | undefined;
   LLM_MODEL_SMART?: string | undefined;
   LLM_MODEL_FAST?: string | undefined;
 }
@@ -117,7 +125,8 @@ export function createLlmProvider(env: LlmEnv): LlmProvider | null {
   if (!apiKey) return null;
   const smart = env.LLM_MODEL_SMART?.trim() || "claude-opus-5-5";
   const fast = env.LLM_MODEL_FAST?.trim() || "claude-haiku-5-5";
-  return new AnthropicProvider({ apiKey, modelSmart: smart, modelFast: fast });
+  const workspaceId = env.ANTHROPIC_WORKSPACE_ID?.trim();
+  return new AnthropicProvider({ apiKey, modelSmart: smart, modelFast: fast, ...(workspaceId ? { workspaceId } : {}) });
 }
 
 /**
