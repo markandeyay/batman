@@ -94,6 +94,12 @@ export function makeHarness(opts: { llm?: LlmProvider | null; geocoder?: Geocode
       if (event.type === "user_command" && event.command === "cancel") next = "CANCELLED";
       if (event.type === "user_command" && event.command === "home") next = "CLOSED";
       if (next) repo.setPlanState(planId, next);
+      // The real engine tells the user when their guardian stops (stateMachine guardian-stop row).
+      if (event.type === "guardian_stop") {
+        const u = await repo.getUser(plan.userId);
+        const g = plan.guardianId ? await repo.getGuardian(plan.guardianId) : null;
+        if (u) await ports.sendTemplate(u.addressE164, "usr_guardian_stopped", { guardianName: g?.displayName ?? null });
+      }
     },
     async sendTemplate(to, template, params = {}) {
       if (await repo.isStopped(to)) return null; // production executors must drop too (I14)

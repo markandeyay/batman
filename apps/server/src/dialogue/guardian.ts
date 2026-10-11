@@ -109,9 +109,12 @@ async function tellUserBackupGone(
   user: User,
   guardian: Guardian,
   template: "usr_guardian_declined" | "usr_guardian_expired" | "usr_guardian_stopped",
+  opts: { alreadyToldByEngine?: boolean } = {},
 ): Promise<void> {
   const plan = await ports.repo.getOpenPlanForUser(user.id);
-  await sendTemplate(ports, user.addressE164, template, { guardianName: guardian.displayName }, { planState: plan?.state ?? null });
+  if (!opts.alreadyToldByEngine) {
+    await sendTemplate(ports, user.addressE164, template, { guardianName: guardian.displayName }, { planState: plan?.state ?? null });
+  }
   const state = (await ports.repo.getDialogueState(user.id)) ?? {};
   if (user.onboardingStep === "done" && !state.pending) await ports.repo.setDialogueState(user.id, { ...state, pending: { kind: "new_guardian" } });
 }
@@ -194,15 +197,21 @@ export async function handleOptinExpire(ports: DialoguePorts, payload: { userId:
 export async function stopGuardian(ports: DialoguePorts, guardian: Guardian): Promise<void> {
   const now = ports.clock.now();
   await ports.repo.updateGuardian(guardian.id, { stoppedAt: now });
+  // The engine's guardian_stop row tells the plan's user (usr_guardian_stopped, DECISIONS.md
+  // core item 7), so the loop below must not tell them a second time.
+  const toldByEngine = new Set<string>();
   for (const p of await ports.repo.listOpenPlansForGuardian(guardian.id)) {
-    if (!TERMINAL_STATES.includes(p.state)) await ports.dispatch(p.id, { type: "guardian_stop" });
+    if (!TERMINAL_STATES.includes(p.state)) {
+      await ports.dispatch(p.id, { type: "guardian_stop" });
+      toldByEngine.add(p.userId);
+    }
   }
   for (const link of await ports.repo.listLinksForGuardian(guardian.id)) {
     if (link.status !== "pending" && link.status !== "accepted") continue;
     await ports.repo.upsertLink({ ...link, status: "revoked", respondedAt: now });
     const user = await ports.repo.getUser(link.userId);
     if (user && !user.deletedAt && user.addressE164 !== guardian.addressE164) {
-      await tellUserBackupGone(ports, user, guardian, "usr_guardian_stopped");
+      await tellUserBackupGone(ports, user, guardian, "usr_guardian_stopped", { alreadyToldByEngine: toldByEngine.has(user.id) });
     }
   }
 }
