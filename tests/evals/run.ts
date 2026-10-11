@@ -1,7 +1,7 @@
 // NLU eval runner (spec 7.5, 15.1 layer 3). Writes reports/evals/<date>.md and exits nonzero when
 // any suite that ran is below target.
 //   npx tsx tests/evals/run.ts                  code words always; LLM suites if ANTHROPIC_API_KEY
-//   npx tsx tests/evals/run.ts --codewords-only offline only
+//   npx tsx tests/evals/run.ts --codewords-only offline only, report in reports/evals/offline/ (ignored)
 // Targets: code words 100% recall and < 0.5% false positives on the benign corpus; classifier
 // >= 98% accuracy with zero NOT_OK classified OK; intake >= 95% field accuracy.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -256,7 +256,9 @@ async function main(): Promise<number> {
     "",
     ...suites.flatMap((s) => [`## ${s.name}: ${s.ran ? (s.pass ? "PASS" : "FAIL") : "SKIPPED"}`, "", ...s.lines, ""]),
   ].join("\n");
-  const outDir = join(root, "reports", "evals");
+  // Offline runs (pnpm verify, every time) go to an ignored folder so they never overwrite the
+  // tracked report from a paid LLM run on the same day.
+  const outDir = codewordsOnly ? join(root, "reports", "evals", "offline") : join(root, "reports", "evals");
   mkdirSync(outDir, { recursive: true });
   const outFile = join(outDir, `${date}.md`);
   writeFileSync(outFile, md);

@@ -5,6 +5,7 @@ node_modules/
 /data/
 /logs/
 reports/live/
+reports/evals/offline/
 .tsbuild/
 *.tsbuildinfo
 .claude/worktrees/
