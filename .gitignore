@@ -8,3 +8,4 @@ reports/live/
 .tsbuild/
 *.tsbuildinfo
 .claude/worktrees/
+!tests/evals/data/
