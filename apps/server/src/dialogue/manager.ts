@@ -183,8 +183,12 @@ async function handleUser(ports: DialoguePorts, user: User, plan: Plan | null, m
     }
     case "other": {
       if (plan && plan.state === "CHECKING") await ports.dispatch(plan.id, { type: "user_reply", label: "AMBIGUOUS", messageId: msg.id });
+      if (c.hint === "voice_failed") {
+        await sendTemplate(ports, to, "voice_unavailable", {}, ctx);
+        return "voice_unavailable";
+      }
       // Location pins arrive with no coordinates (spike finding): ask for a link or an address.
-      if (await isAwaitingVenue(ports, user, plan)) {
+      if (c.hint === "location_pin_unsupported" || (await isAwaitingVenue(ports, user, plan))) {
         await sendTemplate(ports, to, "loc_pin_unsupported", {}, ctx);
         return "pin_unsupported";
       }

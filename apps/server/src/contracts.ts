@@ -164,7 +164,8 @@ export type InboundContent =
   | { kind: "contact"; name: string | null; phones: string[] }
   | { kind: "location"; lat: number; lng: number }
   | { kind: "reaction"; emoji: ReactionEmoji; targetMessageId: string; removed: boolean }
-  | { kind: "other" };
+  /** hint: why the content could not be used, so the dialogue answers precisely. */
+  | { kind: "other"; hint?: "location_pin_unsupported" | "unsupported_attachment" | "voice_failed" };
 
 export type ReactionEmoji = "like" | "love" | "laugh" | "emphasize" | "dislike" | "question" | "other";
 

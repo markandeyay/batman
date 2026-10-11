@@ -150,11 +150,11 @@ async function normalizePart(c: RawContent, o: NormalizeOptions): Promise<PartRe
           // fall through to unsupported
         }
       }
-      return { content: { kind: "other" }, flags: { unsupportedAttachment: true } };
+      return { content: { kind: "other", hint: "unsupported_attachment" }, flags: { unsupportedAttachment: true } };
     }
     case "custom": {
       const raw = (c.raw ?? {}) as { imessage_type?: unknown };
-      if (raw.imessage_type === "unsupported-message") return { content: { kind: "other" }, flags: { locationPinUnsupported: true } };
+      if (raw.imessage_type === "unsupported-message") return { content: { kind: "other", hint: "location_pin_unsupported" }, flags: { locationPinUnsupported: true } };
       return { content: { kind: "other" }, flags: {} };
     }
     case "reply": {

@@ -40,7 +40,7 @@ describe("normalizeInbound", () => {
 
   it("native Send My Current Location: custom unsupported-message -> other with the pin flag (S4 FAIL)", async () => {
     const n = await normalizeInbound(base({ type: "custom", raw: { imessage_type: "unsupported-message" } }), off);
-    expect(n?.message.content).toEqual({ kind: "other" });
+    expect(n?.message.content).toEqual({ kind: "other", hint: "location_pin_unsupported" });
     expect(n?.flags.locationPinUnsupported).toBe(true);
   });
 
@@ -99,7 +99,7 @@ describe("normalizeInbound", () => {
 
   it("other attachments -> other with unsupportedAttachment", async () => {
     const n = await normalizeInbound(base({ type: "attachment", name: "cat.jpg", mimeType: "image/jpeg", read: async () => Buffer.alloc(3) }), off);
-    expect(n?.message.content).toEqual({ kind: "other" });
+    expect(n?.message.content).toEqual({ kind: "other", hint: "unsupported_attachment" });
     expect(n?.flags.unsupportedAttachment).toBe(true);
   });
 
