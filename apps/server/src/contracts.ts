@@ -279,6 +279,7 @@ export const TEMPLATE_IDS = [
   "onb_save_contact",
   "onb_disclosure_done",
   "onb_guardian_invalid",
+  "onb_guardian_text_first", // shared pool: guardian must text Batman first (DECISIONS.md)
   // guardian opt-in (4.3)
   "gdn_optin_request",
   "gdn_optin_thanks",
@@ -302,6 +303,7 @@ export const TEMPLATE_IDS = [
   "loc_reminder",
   "loc_time_only",
   "loc_extend_ask",
+  "loc_pin_unsupported", // location pins arrive without coordinates (spike finding)
   // active (4.6)
   "act_arrival",
   "act_mid_check",

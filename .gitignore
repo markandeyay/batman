@@ -2,8 +2,8 @@ node_modules/
 .env
 .env.*
 !.env.example
-data/
-logs/
+/data/
+/logs/
 reports/live/
 .tsbuild/
 *.tsbuildinfo

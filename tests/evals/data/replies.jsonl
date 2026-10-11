@@ -1,0 +1,307 @@
+{"text":"yeah lol","label":"OK","tag":"slang"}
+{"text":"yes","label":"OK","tag":"plain"}
+{"text":"yep all good","label":"OK","tag":"plain"}
+{"text":"im good","label":"OK","tag":"plain"}
+{"text":"all good!","label":"OK","tag":"plain"}
+{"text":"doing great","label":"OK","tag":"plain"}
+{"text":"having fun","label":"OK","tag":"plain"}
+{"text":"good so far","label":"OK","tag":"plain"}
+{"text":"were good","label":"OK","tag":"plain"}
+{"text":"totally fine","label":"OK","tag":"plain"}
+{"text":"yeah he's really nice","label":"OK","tag":"plain"}
+{"text":"it's going well actually","label":"OK","tag":"plain"}
+{"text":"so far so good","label":"OK","tag":"plain"}
+{"text":"all set","label":"OK","tag":"plain"}
+{"text":"no worries im fine","label":"OK","tag":"plain"}
+{"text":"yup","label":"OK","tag":"slang"}
+{"text":"ya","label":"OK","tag":"slang"}
+{"text":"yea im chillin","label":"OK","tag":"slang"}
+{"text":"lmaooo yes","label":"OK","tag":"slang"}
+{"text":"we vibing","label":"OK","tag":"slang"}
+{"text":"all gucci","label":"OK","tag":"slang"}
+{"text":"10/10 night tbh","label":"OK","tag":"slang"}
+{"text":"bro its fine lol","label":"OK","tag":"slang"}
+{"text":"ye","label":"OK","tag":"slang"}
+{"text":"yessir","label":"OK","tag":"slang"}
+{"text":"deadass having a good time","label":"OK","tag":"slang"}
+{"text":"its lit","label":"OK","tag":"slang"}
+{"text":"we good fam","label":"OK","tag":"slang"}
+{"text":"fr fr all good","label":"OK","tag":"slang"}
+{"text":"chillin chillin","label":"OK","tag":"slang"}
+{"text":"im gud","label":"OK","tag":"typo"}
+{"text":"yeah im fiine","label":"OK","tag":"typo"}
+{"text":"all goood","label":"OK","tag":"typo"}
+{"text":"evrything is good","label":"OK","tag":"typo"}
+{"text":"havin fun lol","label":"OK","tag":"typo"}
+{"text":"yea were gud","label":"OK","tag":"typo"}
+{"text":"im okk","label":"OK","tag":"typo"}
+{"text":"doign great","label":"OK","tag":"typo"}
+{"text":"so far so god lol","label":"OK","tag":"typo"}
+{"text":"yes sry","label":"OK","tag":"typo"}
+{"text":"phone died lol all good","label":"OK","tag":"excuse"}
+{"text":"sorry was in the bathroom, all good","label":"OK","tag":"excuse"}
+{"text":"sry just saw this, im fine","label":"OK","tag":"excuse"}
+{"text":"omg sorry phone was in my bag, we're good","label":"OK","tag":"excuse"}
+{"text":"lol yes sorry it's loud in here","label":"OK","tag":"excuse"}
+{"text":"sorry was talking, everything's fine","label":"OK","tag":"excuse"}
+{"text":"yes!! sorry didnt see","label":"OK","tag":"excuse"}
+{"text":"haha yeah sorry, we're eating","label":"OK","tag":"excuse"}
+{"text":"oops yes all good","label":"OK","tag":"excuse"}
+{"text":"my bad, having a great time","label":"OK","tag":"excuse"}
+{"text":"👍","label":"OK","tag":"emoji"}
+{"text":"😂 yes","label":"OK","tag":"emoji"}
+{"text":"❤️ all good","label":"OK","tag":"emoji"}
+{"text":"👌","label":"OK","tag":"emoji"}
+{"text":"yes 🙂","label":"OK","tag":"emoji"}
+{"text":"😊","label":"OK","tag":"emoji"}
+{"text":"having the best time 🥰","label":"OK","tag":"emoji"}
+{"text":"all good 👍","label":"OK","tag":"emoji"}
+{"text":"😎 we good","label":"OK","tag":"emoji"}
+{"text":"lol 😂 he's hilarious","label":"OK","tag":"emoji"}
+{"text":"ugh fine, the food is just slow lol","label":"OK","tag":"sarcasm"}
+{"text":"oh im SUFFERING, they have bottomless fries","label":"OK","tag":"sarcasm"}
+{"text":"terrible, the dessert is too good","label":"OK","tag":"sarcasm"}
+{"text":"worst date ever (jk he's great)","label":"OK","tag":"sarcasm"}
+{"text":"help me i ate too much pasta lol jk im fine","label":"OK","tag":"sarcasm"}
+{"text":"send help the karaoke is starting 😂 jk all good","label":"OK","tag":"sarcasm"}
+{"text":"dying of boredom at this museum lol nah its cute","label":"OK","tag":"sarcasm"}
+{"text":"great, it's raining, but we're fine inside","label":"OK","tag":"sarcasm"}
+{"text":"absolute disaster, he's taller than his profile said lol","label":"OK","tag":"sarcasm"}
+{"text":"horrible, i'm gonna have to see him again 🙄😂","label":"OK","tag":"sarcasm"}
+{"text":"yeah um yeah everything is good","label":"OK","tag":"voice","fromVoice":true}
+{"text":"yes im fine thanks","label":"OK","tag":"voice","fromVoice":true}
+{"text":"uh yeah were having a good time","label":"OK","tag":"voice","fromVoice":true}
+{"text":"yeah all good um just finishing dinner","label":"OK","tag":"voice","fromVoice":true}
+{"text":"everything's good were at the bar","label":"OK","tag":"voice","fromVoice":true}
+{"text":"yep yep doing fine","label":"OK","tag":"voice","fromVoice":true}
+{"text":"im good im good","label":"OK","tag":"voice","fromVoice":true}
+{"text":"yeah its going great actually","label":"OK","tag":"voice","fromVoice":true}
+{"text":"all good he's nice","label":"OK","tag":"voice","fromVoice":true}
+{"text":"uh huh yes im okay","label":"OK","tag":"voice","fromVoice":true}
+{"text":"still here, it's great","label":"OK","tag":"plain"}
+{"text":"im alive lol","label":"OK","tag":"slang"}
+{"text":"yes mom 🙄 lol im fine","label":"OK","tag":"sarcasm"}
+{"text":"better than expected","label":"OK","tag":"plain"}
+{"text":"really good actually","label":"OK","tag":"plain"}
+{"text":"he's sweet","label":"OK","tag":"plain"}
+{"text":"we're just talking, it's nice","label":"OK","tag":"plain"}
+{"text":"yes we're fine","label":"OK","tag":"plain"}
+{"text":"good good","label":"OK","tag":"plain"}
+{"text":"fine!","label":"OK","tag":"plain"}
+{"text":"perfect","label":"OK","tag":"plain"}
+{"text":"amazing","label":"OK","tag":"plain"}
+{"text":"yes it's been fun","label":"OK","tag":"plain"}
+{"text":"all good, the item is great","label":"OK","tag":"plain"}
+{"text":"yep bought it, all good","label":"OK","tag":"plain"}
+{"text":"the apartment is nice, all good","label":"OK","tag":"plain"}
+{"text":"landlord seems legit, im fine","label":"OK","tag":"plain"}
+{"text":"yes the seller was friendly","label":"OK","tag":"plain"}
+{"text":"going well","label":"OK","tag":"plain"}
+{"text":"great time","label":"OK","tag":"plain"}
+{"text":"im okay","label":"OK","tag":"plain"}
+{"text":"no problems","label":"OK","tag":"plain"}
+{"text":"nothing wrong lol","label":"OK","tag":"plain"}
+{"text":"not bad at all","label":"OK","tag":"plain"}
+{"text":"yeah no its fine","label":"OK","tag":"slang"}
+{"text":"no worries","label":"OK","tag":"plain"}
+{"text":"k all good","label":"OK","tag":"slang"}
+{"text":"yeah good","label":"OK","tag":"plain"}
+{"text":"mhm all good","label":"OK","tag":"voice","fromVoice":true}
+{"text":"all good just busy","label":"OK","tag":"plain"}
+{"text":"fine fine","label":"OK","tag":"plain"}
+{"text":"yes im having fun","label":"OK","tag":"plain"}
+{"text":"it's nice","label":"OK","tag":"plain"}
+{"text":"good vibes only lol","label":"OK","tag":"slang"}
+{"text":"no problems here","label":"OK","tag":"plain"}
+{"text":"not really","label":"NOT_OK","tag":"plain"}
+{"text":"no","label":"NOT_OK","tag":"plain"}
+{"text":"nope","label":"NOT_OK","tag":"plain"}
+{"text":"no not good","label":"NOT_OK","tag":"plain"}
+{"text":"not ok","label":"NOT_OK","tag":"plain"}
+{"text":"im not okay","label":"NOT_OK","tag":"plain"}
+{"text":"can you call me","label":"NOT_OK","tag":"indirect"}
+{"text":"call me pls","label":"NOT_OK","tag":"indirect"}
+{"text":"please call me now","label":"NOT_OK","tag":"indirect"}
+{"text":"get me out of here lol","label":"NOT_OK","tag":"indirect"}
+{"text":"i want to leave","label":"NOT_OK","tag":"indirect"}
+{"text":"i need to go","label":"NOT_OK","tag":"indirect"}
+{"text":"idk he's being weird","label":"NOT_OK","tag":"indirect"}
+{"text":"this is getting weird","label":"NOT_OK","tag":"indirect"}
+{"text":"he keeps touching my leg","label":"NOT_OK","tag":"indirect"}
+{"text":"he won't stop touching me","label":"NOT_OK","tag":"indirect"}
+{"text":"he's really pushy","label":"NOT_OK","tag":"indirect"}
+{"text":"he's kinda aggressive","label":"NOT_OK","tag":"indirect"}
+{"text":"my drink tastes funny","label":"NOT_OK","tag":"indirect"}
+{"text":"i feel really dizzy","label":"NOT_OK","tag":"indirect"}
+{"text":"i think i'm too drunk","label":"NOT_OK","tag":"indirect"}
+{"text":"he locked the door","label":"NOT_OK","tag":"indirect"}
+{"text":"he took my phone for a sec, weird","label":"NOT_OK","tag":"indirect"}
+{"text":"there are three guys here not just him","label":"NOT_OK","tag":"indirect"}
+{"text":"this isn't what the listing said","label":"NOT_OK","tag":"indirect"}
+{"text":"he wants to go back to his place and i don't","label":"NOT_OK","tag":"indirect"}
+{"text":"he's following me to my car","label":"NOT_OK","tag":"indirect"}
+{"text":"i'm uncomfortable","label":"NOT_OK","tag":"plain"}
+{"text":"kinda uncomfortable ngl","label":"NOT_OK","tag":"slang"}
+{"text":"bad vibes","label":"NOT_OK","tag":"slang"}
+{"text":"red flags everywhere","label":"NOT_OK","tag":"slang"}
+{"text":"he's creepy","label":"NOT_OK","tag":"plain"}
+{"text":"lowkey scared","label":"NOT_OK","tag":"slang"}
+{"text":"im scared","label":"NOT_OK","tag":"plain"}
+{"text":"nervous af","label":"NOT_OK","tag":"slang"}
+{"text":"not great tbh","label":"NOT_OK","tag":"plain"}
+{"text":"he's yelling at me","label":"NOT_OK","tag":"indirect"}
+{"text":"he's mad at me","label":"NOT_OK","tag":"indirect"}
+{"text":"he won't let me leave","label":"NOT_OK","tag":"plain"}
+{"text":"come get me","label":"NOT_OK","tag":"plain"}
+{"text":"please come get me","label":"NOT_OK","tag":"plain"}
+{"text":"i don't feel safe","label":"NOT_OK","tag":"plain"}
+{"text":"dont feel safe","label":"NOT_OK","tag":"typo"}
+{"text":"i dont feel saf","label":"NOT_OK","tag":"typo"}
+{"text":"help","label":"NOT_OK","tag":"plain"}
+{"text":"help me","label":"NOT_OK","tag":"plain"}
+{"text":"sos","label":"NOT_OK","tag":"plain"}
+{"text":"call 911","label":"NOT_OK","tag":"plain"}
+{"text":"he hit me","label":"NOT_OK","tag":"plain"}
+{"text":"he grabbed me","label":"NOT_OK","tag":"plain"}
+{"text":"he's following me","label":"NOT_OK","tag":"plain"}
+{"text":"i'm being followed","label":"NOT_OK","tag":"plain"}
+{"text":"stranded, no ride home","label":"NOT_OK","tag":"indirect"}
+{"text":"he left me here","label":"NOT_OK","tag":"indirect"}
+{"text":"he drove off with my stuff","label":"NOT_OK","tag":"indirect"}
+{"text":"they're asking for cash before i see the place","label":"NOT_OK","tag":"indirect"}
+{"text":"the landlord is acting sketchy","label":"NOT_OK","tag":"indirect"}
+{"text":"the buyer brought friends and they're blocking my car","label":"NOT_OK","tag":"indirect"}
+{"text":"great, he won't stop asking for my address","label":"NOT_OK","tag":"sarcasm"}
+{"text":"oh perfect, he 'forgot' his wallet and wants me to drive him home","label":"NOT_OK","tag":"sarcasm"}
+{"text":"love that he keeps ordering me shots 🙃","label":"NOT_OK","tag":"sarcasm"}
+{"text":"fantastic, he's mad i won't go home with him","label":"NOT_OK","tag":"sarcasm"}
+{"text":"awesome, i'm locked in the car with him","label":"NOT_OK","tag":"sarcasm"}
+{"text":"super fun, he's screaming at the waiter and now me","label":"NOT_OK","tag":"sarcasm"}
+{"text":"wonderful he says i can't leave until we talk","label":"NOT_OK","tag":"sarcasm"}
+{"text":"cool cool cool he grabbed my arm","label":"NOT_OK","tag":"sarcasm"}
+{"text":"nah","label":"NOT_OK","tag":"slang"}
+{"text":"nah not really","label":"NOT_OK","tag":"slang"}
+{"text":"naw","label":"NOT_OK","tag":"slang"}
+{"text":"noo","label":"NOT_OK","tag":"typo"}
+{"text":"not rly","label":"NOT_OK","tag":"typo"}
+{"text":"im not ok","label":"NOT_OK","tag":"typo"}
+{"text":"pls call","label":"NOT_OK","tag":"typo"}
+{"text":"get me out","label":"NOT_OK","tag":"plain"}
+{"text":"i need help","label":"NOT_OK","tag":"plain"}
+{"text":"scary","label":"NOT_OK","tag":"plain"}
+{"text":"he scares me","label":"NOT_OK","tag":"plain"}
+{"text":"um can you call me like now","label":"NOT_OK","tag":"voice","fromVoice":true}
+{"text":"no um i dont really feel good about this","label":"NOT_OK","tag":"voice","fromVoice":true}
+{"text":"i want to go home he's being weird","label":"NOT_OK","tag":"voice","fromVoice":true}
+{"text":"uh hes not letting me go","label":"NOT_OK","tag":"voice","fromVoice":true}
+{"text":"please call me i need an excuse to leave","label":"NOT_OK","tag":"voice","fromVoice":true}
+{"text":"um i think something's in my drink","label":"NOT_OK","tag":"voice","fromVoice":true}
+{"text":"this guy is scaring me","label":"NOT_OK","tag":"voice","fromVoice":true}
+{"text":"no he wont let me leave the car","label":"NOT_OK","tag":"voice","fromVoice":true}
+{"text":"im kinda freaking out","label":"NOT_OK","tag":"plain"}
+{"text":"he's way drunker than i thought and wants to drive","label":"NOT_OK","tag":"indirect"}
+{"text":"he took my keys","label":"NOT_OK","tag":"indirect"}
+{"text":"he pulled a knife","label":"NOT_OK","tag":"plain"}
+{"text":"i'm hiding in the bathroom","label":"NOT_OK","tag":"indirect"}
+{"text":"can you pretend to be my mom and call","label":"NOT_OK","tag":"indirect"}
+{"text":"not good. call me","label":"NOT_OK","tag":"plain"}
+{"text":"he's touching me and i said no","label":"NOT_OK","tag":"indirect"}
+{"text":"i'm lost and my phone is dying","label":"NOT_OK","tag":"indirect"}
+{"text":"😬 not great","label":"NOT_OK","tag":"emoji"}
+{"text":"😰","label":"NOT_OK","tag":"emoji"}
+{"text":"🆘","label":"NOT_OK","tag":"emoji"}
+{"text":"nope 😟","label":"NOT_OK","tag":"emoji"}
+{"text":"no 😢","label":"NOT_OK","tag":"emoji"}
+{"text":"worried, he's acting off","label":"NOT_OK","tag":"indirect"}
+{"text":"he keeps insisting i come over","label":"NOT_OK","tag":"indirect"}
+{"text":"not feeling it, want out","label":"NOT_OK","tag":"indirect"}
+{"text":"he's blocking the door","label":"NOT_OK","tag":"indirect"}
+{"text":"?","label":"AMBIGUOUS","tag":"plain"}
+{"text":"who is this","label":"AMBIGUOUS","tag":"plain"}
+{"text":"wait what","label":"AMBIGUOUS","tag":"plain"}
+{"text":"hold on","label":"AMBIGUOUS","tag":"plain"}
+{"text":"brb","label":"AMBIGUOUS","tag":"slang"}
+{"text":"k?","label":"AMBIGUOUS","tag":"plain"}
+{"text":"what do you mean","label":"AMBIGUOUS","tag":"plain"}
+{"text":"huh","label":"AMBIGUOUS","tag":"plain"}
+{"text":"one sec","label":"AMBIGUOUS","tag":"plain"}
+{"text":"hang on","label":"AMBIGUOUS","tag":"plain"}
+{"text":"idk","label":"AMBIGUOUS","tag":"slang"}
+{"text":"maybe","label":"AMBIGUOUS","tag":"plain"}
+{"text":"hmm","label":"AMBIGUOUS","tag":"plain"}
+{"text":"why","label":"AMBIGUOUS","tag":"plain"}
+{"text":"what","label":"AMBIGUOUS","tag":"plain"}
+{"text":"ok?","label":"AMBIGUOUS","tag":"plain"}
+{"text":"lol what","label":"AMBIGUOUS","tag":"slang"}
+{"text":"?? who","label":"AMBIGUOUS","tag":"plain"}
+{"text":"can't talk","label":"AMBIGUOUS","tag":"plain"}
+{"text":"later","label":"AMBIGUOUS","tag":"plain"}
+{"text":"sorry who?","label":"AMBIGUOUS","tag":"plain"}
+{"text":"what's up","label":"AMBIGUOUS","tag":"plain"}
+{"text":"ummm","label":"AMBIGUOUS","tag":"voice","fromVoice":true}
+{"text":"uh hold on a second","label":"AMBIGUOUS","tag":"voice","fromVoice":true}
+{"text":"what did you say","label":"AMBIGUOUS","tag":"voice","fromVoice":true}
+{"text":"sorry can you repeat that","label":"AMBIGUOUS","tag":"voice","fromVoice":true}
+{"text":"eh","label":"AMBIGUOUS","tag":"plain"}
+{"text":"kinda","label":"AMBIGUOUS","tag":"plain"}
+{"text":"i guess","label":"AMBIGUOUS","tag":"plain"}
+{"text":"sort of","label":"AMBIGUOUS","tag":"plain"}
+{"text":"not sure","label":"AMBIGUOUS","tag":"plain"}
+{"text":"depends","label":"AMBIGUOUS","tag":"plain"}
+{"text":"ask me later","label":"AMBIGUOUS","tag":"plain"}
+{"text":"is this the bot","label":"AMBIGUOUS","tag":"plain"}
+{"text":"can i call you back","label":"AMBIGUOUS","tag":"plain"}
+{"text":"did you mean me","label":"AMBIGUOUS","tag":"plain"}
+{"text":"🤔","label":"AMBIGUOUS","tag":"emoji"}
+{"text":"❓","label":"AMBIGUOUS","tag":"emoji"}
+{"text":"wdym","label":"AMBIGUOUS","tag":"slang"}
+{"text":"bruh","label":"AMBIGUOUS","tag":"slang"}
+{"text":"who","label":"AMBIGUOUS","tag":"plain"}
+{"text":"?!","label":"AMBIGUOUS","tag":"plain"}
+{"text":"+30","label":"COMMAND","command":"extend","tag":"plain"}
+{"text":"+60","label":"COMMAND","command":"extend","tag":"plain"}
+{"text":"+15","label":"COMMAND","command":"extend","tag":"plain"}
+{"text":"add 30 min","label":"COMMAND","command":"extend","tag":"plain"}
+{"text":"30 more minutes","label":"COMMAND","command":"extend","tag":"plain"}
+{"text":"another hour","label":"COMMAND","command":"extend","tag":"plain"}
+{"text":"going to be longer","label":"COMMAND","command":"extend","tag":"plain"}
+{"text":"we're getting dinner after","label":"COMMAND","command":"extend","tag":"plain"}
+{"text":"staying a bit longer","label":"COMMAND","command":"extend","tag":"plain"}
+{"text":"gonna be a little longer","label":"COMMAND","command":"extend","tag":"slang"}
+{"text":"+30 lol","label":"COMMAND","command":"extend","tag":"slang"}
+{"text":"add an hour pls","label":"COMMAND","command":"extend","tag":"plain"}
+{"text":"um add like 30 minutes","label":"COMMAND","command":"extend","tag":"voice","fromVoice":true}
+{"text":"done","label":"COMMAND","command":"done","tag":"plain"}
+{"text":"leaving","label":"COMMAND","command":"done","tag":"plain"}
+{"text":"heading home","label":"COMMAND","command":"done","tag":"plain"}
+{"text":"all good im out","label":"COMMAND","command":"done","tag":"plain"}
+{"text":"leaving now","label":"COMMAND","command":"done","tag":"plain"}
+{"text":"im out","label":"COMMAND","command":"done","tag":"slang"}
+{"text":"just left","label":"COMMAND","command":"done","tag":"plain"}
+{"text":"on my way home","label":"COMMAND","command":"done","tag":"plain"}
+{"text":"omw home","label":"COMMAND","command":"done","tag":"slang"}
+{"text":"we're done","label":"COMMAND","command":"done","tag":"plain"}
+{"text":"headed home now","label":"COMMAND","command":"done","tag":"plain"}
+{"text":"uh were leaving now","label":"COMMAND","command":"done","tag":"voice","fromVoice":true}
+{"text":"home","label":"COMMAND","command":"home","tag":"plain"}
+{"text":"made it home","label":"COMMAND","command":"home","tag":"plain"}
+{"text":"im home","label":"COMMAND","command":"home","tag":"plain"}
+{"text":"home safe","label":"COMMAND","command":"home","tag":"plain"}
+{"text":"got home","label":"COMMAND","command":"home","tag":"plain"}
+{"text":"back home now","label":"COMMAND","command":"home","tag":"plain"}
+{"text":"im home lol","label":"COMMAND","command":"home","tag":"slang"}
+{"text":"just got home","label":"COMMAND","command":"home","tag":"plain"}
+{"text":"made it home safe","label":"COMMAND","command":"home","tag":"voice","fromVoice":true}
+{"text":"finally home","label":"COMMAND","command":"home","tag":"plain"}
+{"text":"cancel","label":"COMMAND","command":"cancel","tag":"plain"}
+{"text":"not going","label":"COMMAND","command":"cancel","tag":"plain"}
+{"text":"he cancelled","label":"COMMAND","command":"cancel","tag":"plain"}
+{"text":"she canceled","label":"COMMAND","command":"cancel","tag":"typo"}
+{"text":"they bailed on me","label":"COMMAND","command":"cancel","tag":"slang"}
+{"text":"it's off","label":"COMMAND","command":"cancel","tag":"plain"}
+{"text":"never mind cancel it","label":"COMMAND","command":"cancel","tag":"plain"}
+{"text":"we're moving to the bar next door","label":"COMMAND","command":"moving","tag":"plain"}
+{"text":"moving to Lazy Bird","label":"COMMAND","command":"moving","tag":"plain"}
+{"text":"heading over to the park","label":"COMMAND","command":"moving","tag":"plain"}
+{"text":"we switched to the coffee shop across the street","label":"COMMAND","command":"moving","tag":"plain"}
+{"text":"moved to the patio bar down the block","label":"COMMAND","command":"moving","tag":"plain"}
