@@ -3,6 +3,7 @@
 // Plain text only, no markdown, no em dashes, at most one emoji per message. Guardian alerts use
 // only the leading warning sign. Copy reachable in DISCREET_STATES never uses banned words (I10).
 import type {
+  DecoyCaller,
   EscalationReason,
   Plan,
   PlanState,
@@ -577,6 +578,35 @@ const T: Record<TemplateId, Variant[]> = {
   delete_confirm_ask: [() => "This deletes your account, plans, and backup info for good. Reply YES to confirm, or anything else to keep it."],
   delete_done: [() => "Done, I deleted everything. Text me anytime if you want to start over."],
   quota_onboarding_paused: [() => "Hey, I'm full for new people today. Can you text me again tomorrow?"],
+
+  // ---------- former EXTRA_COPY lines (9.4: fixed templates) ----------
+  intake_questions: [(c) => clean(c.p.questionsText) ?? "What time is it, and where?"],
+  ask_caller: [() => "Who should the fake call come from: mom, roommate, or boss?"],
+  caller_set: [(c) => `Done, calls will come from "${c.p.decoyCaller ?? "roommate"}".`],
+  codewords_busy: [() => "Let's do that after this one wraps up."],
+  no_plan_distress: [() => "If you're in danger right now, call 911. I can only look out for you during a meetup you've told me about."],
+  guardian_call_outside: [(c) => `I can only call ${clean(c.p.userName) ?? "them"} during a meetup they told me about.`],
+  replace_kept: [() => "Okay, keeping your current plan."],
+  delete_kept: [() => "Okay, nothing deleted."],
+  ask_time_again: [() => "No problem, what time is it?"],
+  ask_new_guardian: [() => "Who should be your new backup? Send their name and number, or share their contact card."],
+
+  // ---------- guardian start notice (4.4.2 notifyGuardianStartEnd). No location (I4). ----------
+  gdn_plan_started: [
+    (c) => lines(`Heads up: ${c.user} is starting ${meetupNoun(c)}.`, planLine(c), "I'll text you when it's over. You'll only hear from me sooner if they might need help."),
+  ],
+
+  // ---------- M7, X3, X4 ----------
+  plan_cancel_confirm_ask: [(c) => `Want me to cancel your plan for ${c.dayTime(c.startAt)}? Reply YES to cancel or NO to keep it.`],
+  // Discreet (I10): reads like a friend's text on a lock screen.
+  usr_backup_unreachable: [(c) => `Couldn't get hold of ${clean(c.p.guardianName) ?? "them"}. Text me when you can.`],
+  // Plain explanation, only outside a window or once the user replies.
+  usr_backup_unreachable_explain: [
+    (c) => `Heads up: earlier I tried to reach ${c.guardian} for you and couldn't. If you need help right now, call 911. Want to add a different backup?`,
+  ],
+  plan_expired_unarmed: [
+    (c) => `Your plan for ${c.dayTime(c.startAt)} expired because ${c.guardian} never said yes to being your backup. Text me if you want to set up another one.`,
+  ],
 };
 
 /** Templates sent to the guardian (not to the user). */
@@ -592,6 +622,8 @@ export const GUARDIAN_TEMPLATES: readonly TemplateId[] = [
   "gdn_all_clear",
   "gdn_location_denied",
   "gdn_call_unavailable",
+  "guardian_call_outside",
+  "gdn_plan_started",
 ];
 
 /** User-facing templates that are never sent inside a window (onboarding, intake, help). */
@@ -610,6 +642,10 @@ const PRE_WINDOW_ONLY: readonly TemplateId[] = [
   "plan_confirm",
   "help",
   "quota_onboarding_paused",
+  "intake_questions",
+  "no_plan_distress",
+  "usr_backup_unreachable_explain",
+  "plan_expired_unarmed",
 ];
 
 /**
@@ -653,19 +689,18 @@ export function renderAllVariants(id: TemplateId, params: TemplateParams | Recor
   return T[id].map((v) => v(new Ctx(params as TemplateParams)));
 }
 
-// ---------- Extra copy the dialogue layer needs that has no TemplateId yet ----------
-// Proposed for contracts.ts TEMPLATE_IDS; sent through DialoguePorts.sendText until then.
+// ---------- Former free-text dialogue lines, now TemplateIds (kept for callers and tests) ----------
 
 export const EXTRA_COPY = {
-  ask_caller: () => "Who should the fake call come from: mom, roommate, or boss?",
-  caller_set: (who: string) => `Done, calls will come from "${who}".`,
-  codewords_busy: () => "Let's do that after this one wraps up.",
-  no_plan_distress: () => "If you're in danger right now, call 911. I can only look out for you during a meetup you've told me about.",
-  guardian_call_outside: (user: string) => `I can only call ${user} during a meetup they told me about.`,
-  replace_kept: () => "Okay, keeping your current plan.",
-  delete_kept: () => "Okay, nothing deleted.",
-  ask_time_again: () => "No problem, what time is it?",
-  ask_new_guardian: () => "Who should be your new backup? Send their name and number, or share their contact card.",
+  ask_caller: () => renderTemplate("ask_caller"),
+  caller_set: (who: string) => renderTemplate("caller_set", { decoyCaller: who as DecoyCaller }),
+  codewords_busy: () => renderTemplate("codewords_busy"),
+  no_plan_distress: () => renderTemplate("no_plan_distress"),
+  guardian_call_outside: (user: string) => renderTemplate("guardian_call_outside", { userName: user }),
+  replace_kept: () => renderTemplate("replace_kept"),
+  delete_kept: () => renderTemplate("delete_kept"),
+  ask_time_again: () => renderTemplate("ask_time_again"),
+  ask_new_guardian: () => renderTemplate("ask_new_guardian"),
 } as const;
 
 export type ExtraCopyId = keyof typeof EXTRA_COPY;

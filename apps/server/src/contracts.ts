@@ -353,6 +353,26 @@ export const TEMPLATE_IDS = [
   "delete_confirm_ask",
   "delete_done",
   "quota_onboarding_paused",
+  // dialogue lines that used to be free text (EXTRA_COPY), now fixed templates (9.4)
+  "intake_questions", // validated LLM-phrased intake questions (param questionsText) or their template fallback
+  "ask_caller",
+  "caller_set",
+  "codewords_busy",
+  "no_plan_distress",
+  "guardian_call_outside",
+  "replace_kept",
+  "delete_kept",
+  "ask_time_again",
+  "ask_new_guardian",
+  // guardian start notice for notifyGuardianStartEnd (4.4.2, 4.8)
+  "gdn_plan_started",
+  // M7: "done" before the meetup starts asks before cancelling
+  "plan_cancel_confirm_ask",
+  // X3: L3 with no reachable guardian. Discreet line in a window; plain explanation after it.
+  "usr_backup_unreachable",
+  "usr_backup_unreachable_explain",
+  // X4: a plan that never got a guardian expired at its start
+  "plan_expired_unarmed",
 ] as const;
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
 
@@ -414,6 +434,10 @@ export type TemplateParams = {
   /** onb_guardian_text_first: the pool number assigned to the guardian, and its sms: link. */
   assignedNumber?: string | null;
   smsLink?: string | null;
+  /** intake_questions: the validated LLM-phrased question text (spec 9.4). */
+  questionsText?: string | null;
+  /** caller_set: the chosen decoy caller. */
+  decoyCaller?: DecoyCaller | null;
   /** gdn_all_clear / close_done_ack: why the plan ended (H2: honest copy per reason). */
   closeReason?: CloseReason | null;
 };

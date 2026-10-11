@@ -12,12 +12,11 @@ import type { DecoyCaller, E164, InboundMessage, Plan, User } from "../contracts
 import { DECOY_CALLERS, DISCREET_STATES, TERMINAL_STATES, WINDOW_STATES } from "../contracts.js";
 import { classifyReply } from "../nlu/classifyReply.js";
 import { isAffirmative, isNegative, isOkNow, matchKeywordRule, type KeywordRule } from "../nlu/rules.js";
-import { EXTRA_COPY } from "../notify/templates.js";
 import { matchCodeWords, normalizeText } from "../pipeline/codewords.js";
 import { captureGuardian, currentGuardianFor, guardianHasObligation, guardianKeyword, handleGuardianInbound, stopGuardian } from "./guardian.js";
 import { handleIntakeLocation, handleIntakeText, isAwaitingVenue } from "./intake.js";
 import { handleCodewordReply, handleOnboarding, onboardingStep, startOnboarding } from "./onboarding.js";
-import { sendTemplate, sendText } from "./out.js";
+import { sendTemplate } from "./out.js";
 import type { DialoguePorts, DialogueState } from "./ports.js";
 
 export interface HandleResult {
@@ -196,7 +195,7 @@ async function handleUserText(ports: DialoguePorts, user: User, plan: Plan | nul
       return "distress";
     }
     if (rule.kind === "distress") {
-      await sendText(ports, to, EXTRA_COPY.no_plan_distress());
+      await sendTemplate(ports, to, "no_plan_distress", {}, ctx);
       return "distress_no_plan";
     }
   }
@@ -215,7 +214,7 @@ async function handleUserText(ports: DialoguePorts, user: User, plan: Plan | nul
       await sendTemplate(ports, to, "delete_done");
       return "deleted";
     }
-    await sendText(ports, to, EXTRA_COPY.delete_kept(), ctx);
+    await sendTemplate(ports, to, "delete_kept", {}, ctx);
     return "delete_kept";
   }
   if (p?.kind === "caller") {
@@ -223,7 +222,7 @@ async function handleUserText(ports: DialoguePorts, user: User, plan: Plan | nul
     await ports.repo.setDialogueState(user.id, { ...ds, pending: null });
     if (who) {
       await ports.repo.updateUser(user.id, { decoyCaller: who as DecoyCaller });
-      await sendText(ports, to, EXTRA_COPY.caller_set(who), ctx);
+      await sendTemplate(ports, to, "caller_set", { decoyCaller: who as DecoyCaller }, ctx);
       return "caller_set";
     }
   }
@@ -239,7 +238,7 @@ async function handleUserText(ports: DialoguePorts, user: User, plan: Plan | nul
       return ok ? "guardian_captured" : "guardian_invalid";
     }
     if (isAffirmative(text)) {
-      await sendText(ports, to, EXTRA_COPY.ask_new_guardian(), ctx);
+      await sendTemplate(ports, to, "ask_new_guardian", {}, ctx);
       return "guardian_ask_new";
     }
     if (isNegative(text)) {
@@ -367,12 +366,12 @@ async function handleRule(
       return "delete_ask";
     case "change_backup":
       await ports.repo.setDialogueState(user.id, { ...ds, pending: { kind: "new_guardian" } });
-      await sendText(ports, to, EXTRA_COPY.ask_new_guardian(), ctx);
+      await sendTemplate(ports, to, "ask_new_guardian", {}, ctx);
       return "change_backup";
     case "change_codewords":
       if (plan && DISCREET_STATES.includes(plan.state)) {
         // onb_ask_codewords names the alert word; never send it during a window (I10).
-        await sendText(ports, to, EXTRA_COPY.codewords_busy(), ctx);
+        await sendTemplate(ports, to, "codewords_busy", {}, ctx);
         return "codewords_busy";
       }
       await ports.repo.setDialogueState(user.id, { ...ds, pending: { kind: "codewords" } });
@@ -383,7 +382,7 @@ async function handleRule(
       return "change_codewords";
     case "change_caller":
       await ports.repo.setDialogueState(user.id, { ...ds, pending: { kind: "caller" } });
-      await sendText(ports, to, EXTRA_COPY.ask_caller(), ctx);
+      await sendTemplate(ports, to, "ask_caller", {}, ctx);
       return "change_caller";
     case "stop":
     case "distress":

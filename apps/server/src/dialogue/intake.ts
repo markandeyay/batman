@@ -9,9 +9,9 @@ import { formatClock, formatDayTime } from "../geo/timezone.js";
 import { extractPlan, type ExtractOutcome, type PartialPlanFacts } from "../nlu/extractPlan.js";
 import { isAffirmative, isGo, isNegative } from "../nlu/rules.js";
 import { phraseQuestions, questionItem, type CopyItem, type QuestionId } from "../notify/copy.js";
-import { EXTRA_COPY, durationText } from "../notify/templates.js";
+import { durationText } from "../notify/templates.js";
 import { currentGuardianFor } from "./guardian.js";
-import { sendTemplate, sendText } from "./out.js";
+import { sendTemplate } from "./out.js";
 import type { DialoguePorts, DialogueState, PlanEditField, PlanFieldPatch } from "./ports.js";
 
 export const DEFAULT_DURATION_MIN: Record<PlanType, number> = { date: 120, marketplace: 20, viewing: 45, other: 60 };
@@ -181,7 +181,7 @@ async function nextStep(ports: DialoguePorts, user: User, planId: string, state:
     for (const q of optIds) items.push(questionItem(q));
     const facts = [user.displayName, plan.venueText, plan.counterpartName, plan.counterpartSource].filter((x): x is string => !!x);
     const phrased = await ports.typing(to, () => phraseQuestions(items, facts, ports.llm));
-    await sendText(ports, to, phrased.text);
+    await sendTemplate(ports, to, "intake_questions", { questionsText: phrased.text });
     intake.asked.push(...questions);
     // Optional questions are asked once; never re-ask a declined optional one (4.4.3).
     for (const q of optIds) if (!intake.declined.includes(q)) intake.declined.push(q);
@@ -194,7 +194,7 @@ async function nextStep(ports: DialoguePorts, user: User, planId: string, state:
     const items = [!plan.startAt ? questionItem("start_time") : null, !plan.venueText ? questionItem("venue") : null].filter(
       (x): x is CopyItem => x !== null,
     );
-    await sendText(ports, to, items.map((i) => i.text).join(" "));
+    await sendTemplate(ports, to, "intake_questions", { questionsText: items.map((i) => i.text).join(" ") });
     intake.rounds += 1;
     await saveState(ports, user, { ...state, intake, pending: { kind: "questions", planId: plan.id } });
     return "intake_required_again";
@@ -309,7 +309,7 @@ export async function handleIntakeText(ports: DialoguePorts, user: User, plan: P
   if ((p?.kind === "time_confirm" || p?.kind === "time_past") && plan && plan.id === p.planId) {
     if (isAffirmative(msg.text)) return applyTime(ports, user, plan, new Date(p.proposed), { ...state, pending: null });
     if (isNegative(msg.text)) {
-      await sendText(ports, user.addressE164, EXTRA_COPY.ask_time_again());
+      await sendTemplate(ports, user.addressE164, "ask_time_again");
       await saveState(ports, user, { ...state, pending: null });
       return "intake_time_rejected";
     }
@@ -323,7 +323,7 @@ export async function handleIntakeText(ports: DialoguePorts, user: User, plan: P
     }
     if (isNegative(msg.text)) {
       await saveState(ports, user, { ...state, pending: null });
-      await sendText(ports, user.addressE164, EXTRA_COPY.replace_kept());
+      await sendTemplate(ports, user.addressE164, "replace_kept");
       return "intake_replace_kept";
     }
   }
