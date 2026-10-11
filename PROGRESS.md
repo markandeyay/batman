@@ -4,7 +4,11 @@ Resume file for Batman. A fresh Claude Code session must be able to continue fro
 Spec: docs/BATMAN_SPEC.md. Decisions: DECISIONS.md. Verified APIs: docs/PHOTON_NOTES.md.
 
 ## Current phase
-Phase 0b (spikes). Paused: all subagents were stopped by the human on 2026-10-10 while new credentials were added. Waiting for the human to confirm restarting them.
+Phase 0b nearly done (S2 live call pending). Phases 1 to 4 logic in progress in parallel:
+- core-engineer: DONE and merged to main (plan engine, ladder, scheduler, risk, store, replay; 296 tests total pass).
+- conversation-engineer: running in a worktree (dialogue, NLU, code words, templates, evals). Told about guardian-text-first and pin changes.
+- integration-engineer: running in a worktree (gateway, channel, executor, Find My source, control port, terminal, app.ts).
+- Main conversation will write apps/server/src/index.ts and wire the dialogue manager after both merge, then run test-engineer and safety-reviewer.
 
 ## Done (2026-10-10)
 - Repo, .gitignore, .gitattributes, CLAUDE.md, .claude/settings.json, .claude/agents/*.md (spec 13). Deny rule narrowed so .env.example is readable.
@@ -16,11 +20,10 @@ Phase 0b (spikes). Paused: all subagents were stopped by the human on 2026-10-10
 - apps/server/src/contracts.ts: shared types, EngineEvent, Effect, TemplateId, Channel, CallService, LocationSource. Pure engine plus effects architecture (DECISIONS.md).
 - docs/spikes/S2.md: install half PASS (rtc-node loads on Windows), SIP host reachable over TLS 5061 and TCP 5060. Call test not yet run.
 
-## In progress when stopped (uncommitted, in main checkout)
-- scripts/spike-s1.ts (Find My over gRPC; may already have sent one Find My request card to the human's iPhone). Not verified.
-- scripts/spike-inbound.ts (S3/S4 logger + ping/pong echo). Not verified.
-- apps/probe/src/register.ts (S5/S6 registration helper). Not verified.
-- core-engineer and conversation-engineer had not committed anything; their worktrees were removed.
+## Spike outcomes (docs/SPIKES.md)
+- S1 PASS (Find My works on shared pool once the user has texted Batman first; movement tracked live). S2 partial (LiveKit path works; live call pending). S3 not tested (text-only). S4 FAIL for native pins (use typed address or Maps link). S5 guardians must be registered and must text Batman first. S6 FAIL (live testing = guided iPhone + pnpm chat + sim).
+- Text-only mode: OpenAI key invalid and disabled in .env. Calls ring with a tone; guardian alerts are text only.
+- Host PC entered Modern Standby during a test; keep lid open and plugged in for demos.
 
 ## Next
 1. Restart (with the human's go-ahead): S1, S3+S4, S5+S6, and a new S2 call spike (integration-engineer each); core-engineer and conversation-engineer in fresh worktrees from main. Briefs: see the session transcript or rebuild from spec 13.3/13.4 plus DECISIONS.md (voice enabled, Anthropic LLM, contracts.ts frozen).
