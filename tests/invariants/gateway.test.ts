@@ -1,6 +1,6 @@
 // Gateway-level invariant tests (spec Section 3): I2, I3, I4, I6, I12.
 import { describe, expect, it } from "vitest";
-import type { E164, Fix, LocationSource } from "../../apps/server/src/contracts.js";
+import type { E164, Fix, LocationSource, TemplateParams } from "../../apps/server/src/contracts.js";
 import { EmergencyNumberError } from "../../apps/server/src/gateway/errors.js";
 import { FindMyLocationSource, type LocationsApi } from "../../apps/server/src/location/findmy.js";
 import { PlanRuntime } from "../../apps/server/src/plan/runtime.js";
@@ -91,7 +91,7 @@ describe("I4 minimal disclosure", () => {
       const { store, plan } = seededStore(state);
       const t = makeExecutor(store, new FakeClock(T0));
       await t.executor.send({ kind: "send", to: "guardian", template: "gdn_location_update", params: { fix: fix() } }, plan);
-      await t.executor.send({ kind: "send", to: "user", template: "act_mid_check", params: { fix: fix(), lastFix: fix() } }, plan);
+      await t.executor.send({ kind: "send", to: "user", template: "act_mid_check", params: { fix: fix(), lastFix: fix() } as unknown as TemplateParams }, plan);
       const g = t.resolver.space(GUARDIAN).sent[0]!;
       const u = t.resolver.space(USER).sent[0]!;
       expect(u).not.toMatch(/41\.9/);

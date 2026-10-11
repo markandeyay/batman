@@ -6,8 +6,8 @@ import type {
   EscalationReason,
   Plan,
   PlanState,
-  PlanType,
   TemplateId,
+  TemplateParams,
   Transport,
   TriggerId,
 } from "../contracts.js";
@@ -15,64 +15,9 @@ import { TEMPLATE_IDS } from "../contracts.js";
 import { FALLBACK_TZ, formatClock, formatClockRange, formatDayTime, isValidTz } from "../geo/timezone.js";
 import { formatPhoneForDisplay } from "../util/phone.js";
 
-/**
- * Parameters a template may use. All optional; templates degrade gracefully. Dates may be Date
- * objects or ISO strings (job payloads are JSON). Passing `plan` fills plan fields automatically;
- * explicit keys override plan-derived values.
- */
-export interface TemplateParams {
-  plan?: Partial<Plan> | null;
-  userName?: string | null;
-  guardianName?: string | null;
-  tz?: string | null;
-  now?: Date | string;
-  type?: PlanType | null;
-  startAt?: Date | string | null;
-  endAt?: Date | string | null;
-  venueText?: string | null;
-  counterpartName?: string | null;
-  counterpartSource?: string | null;
-  transport?: Transport | null;
-  buyOrSell?: "buy" | "sell" | null;
-  durationMin?: number | null;
-  /** Escalation reason (gdn_alert). Defaults to plan.escalationReason. */
-  reason?: EscalationReason | null;
-  /** Ladder trigger for reason lines, when reason is not given. */
-  trigger?: TriggerId | null;
-  minutesSilent?: number | null;
-  /** How many of Batman's texts went unanswered (gdn_alert honesty, I11). */
-  messagesUnanswered?: number | null;
-  /** Whether a check-in call was actually placed (I11: never claim a call that did not happen). */
-  callPlaced?: boolean | null;
-  /** Last usable fix for guardian alerts and updates. */
-  fix?: { lat: number; lng: number; accuracyM: number; at: Date | string } | null;
-  /** Reverse geocoded address for the fix. */
-  address?: string | null;
-  locationMode?: "findmy" | "pin" | "none" | null;
-  /** Fields whose defaults were used ("duration", "type"). */
-  defaultsUsed?: string[] | null;
-  /** One safety tip line (intake only, at most one). */
-  tip?: string | null;
-  /** plan_locked_in / plan_awaiting_guardian: the meetup starts within 30 min. */
-  soon?: boolean | null;
-  /** close_done_ack: true when the plan closed right away (no home geofence). */
-  closed?: boolean | null;
-  /** plan_edit_confirm: human readable changes, e.g. ["starts Sat 8:00 PM"]. */
-  changes?: string[] | null;
-  /** onb_codewords_invalid / onb_guardian_invalid reason id. */
-  reasonId?: string | null;
-  /** status: plan state; null = no plan. */
-  state?: PlanState | null;
-  /** plan_time_past_ask / plan_time_confirm_ask: the time to propose. */
-  suggestedStart?: Date | string | null;
-  /** loc_extend_ask: when the current share ends. */
-  expiresAt?: Date | string | null;
-  /** onb_save_contact: true when the user only changed code words (no contact card step). */
-  changeOnly?: boolean | null;
-  /** onb_guardian_text_first: the pool number assigned to the guardian, and its sms: link. */
-  assignedNumber?: string | null;
-  smsLink?: string | null;
-}
+// TemplateParams and CloseReason live in contracts.ts (C1: the one canonical shape the engine
+// emits and these templates read; the engine may not import notify/, I7 guard).
+export type { CloseReason, TemplateParams } from "../contracts.js";
 
 type Variant = (c: Ctx) => string;
 

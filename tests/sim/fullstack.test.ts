@@ -123,7 +123,7 @@ describe("15.3 full stack scenarios", () => {
     expect(alert).toMatchObject({ critical: true, notifyAnyway: true, address: GUARDIAN });
     expect(alert.text.split("\n")).toEqual([
       "⚠️ Alex might need help.",
-      "Alex hasn't answered my messages (18 min) during a date with Jordan (Hinge).",
+      "Alex hasn't answered my last 3 messages (18 min) during a date with Jordan (Hinge).",
       expect.stringMatching(/^Last location at 9:33 PM \(just now, ±20 m\)$/),
       expect.stringMatching(/^https:\/\/maps\.apple\.com\/\?ll=41\.91\d\d,-87\.70\d\d&q=Alex$/),
       "Plan: Lula Cafe, 7:00 to 9:00 PM. Alex is driving themselves.",

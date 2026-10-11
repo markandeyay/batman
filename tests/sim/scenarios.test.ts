@@ -79,8 +79,10 @@ describe("15.3 scenarios", () => {
     const alert = s.out.find((o) => o.template === "gdn_alert")!;
     expect(alert).toMatchObject({ critical: true, notifyAnyway: true });
     // I11: the alert states what is known (time silent, last fix age), never certainty.
-    expect(alert.params).toMatchObject({ reason: "no_reply", trigger: "T-OVR", minutesSilent: 18, userName: "Alex", venueText: "Lula Cafe" });
-    expect((alert.params?.lastFix as { minutesAgo: number }).minutesAgo).toBe(0);
+    expect(alert.params).toMatchObject({ reason: { kind: "no_reply", trigger: "T-OVR" }, trigger: "T-OVR", minutesSilent: 18, userName: "Alex", venueText: "Lula Cafe" });
+    // The fix is current (0 min old) at alert time.
+    const ap = alert.params as { fix: { at: Date }; now: Date };
+    expect(ap.fix.at.getTime()).toBe(ap.now.getTime());
     expect(s.out.filter((o) => o.template === "lad_l1" || o.template === "lad_l2_text").every((o) => o.notifyAnyway)).toBe(true);
     // 6.4: no user messages after L3.
     expect(s.sends(153).filter((x) => x.startsWith("user:"))).toEqual([]);
@@ -113,7 +115,7 @@ describe("15.3 scenarios", () => {
       "140 send guardian:gdn_alert",
       "140 call guardian:guardian_alert",
     ]);
-    expect(s.out.find((o) => o.template === "gdn_alert")!.params?.reason).toBe("not_ok_reply");
+    expect(s.out.find((o) => o.template === "gdn_alert")!.params?.reason).toEqual({ kind: "not_ok_reply" });
   });
 
   it("S-05 with calls down: the exit call falls back to a text (6.6 step 3)", async () => {
@@ -163,7 +165,7 @@ describe("15.3 scenarios", () => {
       "14.2 call guardian:guardian_alert",
       "17.2 send guardian:gdn_alert_repeat",
     ]);
-    expect(s.out.find((o) => o.template === "gdn_alert")!.params).toMatchObject({ reason: "no_reply", trigger: "T-DEP-CAR" });
+    expect(s.out.find((o) => o.template === "gdn_alert")!.params).toMatchObject({ reason: { kind: "no_reply", trigger: "T-DEP-CAR" }, trigger: "T-DEP-CAR" });
   });
 
   it("S-09: date, walk to a bar 400 m away, stay 30 min -> New spot only, no ladder when answered", async () => {
@@ -224,7 +226,7 @@ describe("15.3 scenarios", () => {
       "153 send guardian:gdn_alert",
       "153 call guardian:guardian_alert",
     ]);
-    expect(s.out.find((o) => o.template === "gdn_alert")!.params?.lastFix).toBeNull();
+    expect(s.out.find((o) => o.template === "gdn_alert")!.params?.fix).toBeNull();
   });
 
   it("S-21: list() returns another person's location -> ignored (I2)", async () => {

@@ -306,6 +306,17 @@ function parseJson<T>(text: string | null | undefined, fallback: T): T {
 interface EngineStateJson {
   flags?: Partial<PlanFlags>;
   pendingSpot?: PendingSpot | null;
+  ladderMessages?: number;
+  checkinCallPlaced?: boolean | null;
+  escalationActivityAt?: string | null;
+  errorCheckinAt?: string | null;
+  preEscalationState?: PlanState | null;
+}
+
+function isoDate(v: string | null | undefined): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function toPlan(r: PlanRow): EnginePlan {
@@ -361,11 +372,24 @@ function toPlan(r: PlanRow): EnginePlan {
     lastResolvedAt: r.lastResolvedAt,
     pendingSpot: engine.pendingSpot ?? null,
     flags: { ...DEFAULT_FLAGS, ...(engine.flags ?? {}) },
+    ladderMessages: engine.ladderMessages ?? 0,
+    checkinCallPlaced: engine.checkinCallPlaced ?? null,
+    escalationActivityAt: isoDate(engine.escalationActivityAt),
+    errorCheckinAt: isoDate(engine.errorCheckinAt),
+    preEscalationState: engine.preEscalationState ?? null,
   };
 }
 
 function toRow(p: EnginePlan): typeof s.plans.$inferInsert {
-  const engine: EngineStateJson = { flags: p.flags, pendingSpot: p.pendingSpot };
+  const engine: EngineStateJson = {
+    flags: p.flags,
+    pendingSpot: p.pendingSpot,
+    ladderMessages: p.ladderMessages ?? 0,
+    checkinCallPlaced: p.checkinCallPlaced ?? null,
+    escalationActivityAt: p.escalationActivityAt ? p.escalationActivityAt.toISOString() : null,
+    errorCheckinAt: p.errorCheckinAt ? p.errorCheckinAt.toISOString() : null,
+    preEscalationState: p.preEscalationState ?? null,
+  };
   return {
     id: p.id,
     userId: p.userId,

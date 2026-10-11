@@ -1,7 +1,7 @@
 // Engine-side plan record and context (spec 6, 7). Extends contracts.Plan with the bookkeeping
 // fields the engine needs to stay idempotent and restart-safe. Everything here is persisted
 // by store/repo.ts (spec 12 plus the columns listed in store/schema.ts).
-import type { DecoyCaller, Fix, GuardianLinkStatus, Plan } from "../contracts.js";
+import type { DecoyCaller, Fix, GuardianLinkStatus, Plan, PlanState } from "../contracts.js";
 
 /** Small one-shot flags, persisted as JSON (plans.engine_state_json). */
 export interface PlanFlags {
@@ -47,6 +47,16 @@ export interface EnginePlan extends Plan {
   lastResolvedAt: Date | null;
   pendingSpot: PendingSpot | null;
   flags: PlanFlags;
+  /** Ladder texts sent to the user in the current ladder (L0, L1, L2), for gdn_alert honesty (I11). */
+  ladderMessages: number;
+  /** Result of the latest check-in call (call_result), null when unknown (I11: never claim a call). */
+  checkinCallPlaced: boolean | null;
+  /** Last guardian-facing activity during an escalation (alert, repeat, update, GOT IT). Drives escalation_end (M1). */
+  escalationActivityAt: Date | null;
+  /** Last plain_checkin_error sent (M3: at most once per hour). */
+  errorCheckinAt: Date | null;
+  /** State before an escalation that started outside a window (H3: ARMED, AWAITING_GUARDIAN). */
+  preEscalationState: PlanState | null;
 }
 
 export const DEFAULT_FLAGS: PlanFlags = {
@@ -104,5 +114,10 @@ export function newEnginePlan(p: Plan): EnginePlan {
     lastResolvedAt: null,
     pendingSpot: null,
     flags: { ...DEFAULT_FLAGS },
+    ladderMessages: 0,
+    checkinCallPlaced: null,
+    escalationActivityAt: null,
+    errorCheckinAt: null,
+    preEscalationState: null,
   };
 }

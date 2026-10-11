@@ -383,21 +383,9 @@ export class FullStack {
     this.sent.push({ t: rel(this.clock.now()), at: this.clock.now(), to: this.roleOf(address), address, template, text, origin, state: this.planStateFor(address), id: ref.id, seq: ++this.evSeq, ...extra });
   }
 
-  /** GLUE: engine send params use different keys than notify/templates.ts TemplateParams. */
+  /** Engine sends carry the canonical TemplateParams (C1); the executor only adds the plan record. */
   engineParams(e: SendEffect, plan: EnginePlan): TemplateParams {
-    const p = (e.params ?? {}) as Record<string, unknown>;
-    const lastFix = p.lastFix as TemplateParams["fix"] | undefined;
-    return {
-      ...(p as TemplateParams),
-      plan,
-      tz: (p.timeZone as string | undefined) ?? TZ,
-      now: this.clock.now(),
-      type: plan.type,
-      // The engine sends reason as a kind string; templates expect the EscalationReason object.
-      reason: plan.escalationReason,
-      fix: lastFix ?? null,
-      locationMode: plan.locationMode,
-    };
+    return { plan, ...(e.params ?? {}) };
   }
 
   /** GLUE: the OutboundPort the gateway executor must implement. */

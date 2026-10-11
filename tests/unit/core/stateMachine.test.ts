@@ -386,7 +386,7 @@ describe("6.2 / 4.7 overtime and ladder steps (6.4)", () => {
     expect(kinds(r.fx)).toEqual(["cancel_jobs", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
     const alert = r.fx[1] as Extract<Effect, { kind: "send" }>;
     expect(alert).toMatchObject({ critical: true, notifyAnyway: true });
-    expect(alert.params).toMatchObject({ reason: "no_reply", minutesSilent: 12, lastFix: { minutesAgo: 2 }, userName: "Alex" });
+    expect(alert.params).toMatchObject({ reason: { kind: "no_reply" }, minutesSilent: 12, fix: { at: at(40) }, now: at(42), userName: "Alex" }); // fix 2 min old
     expect(sched(r.fx, "guardian_repeat")[0]!.runAt).toEqual(at(45));
     // I5 / 6.4: no user message at L3.
     expect(sends(r.fx).filter((s) => s.startsWith("user:"))).toEqual([]);
@@ -577,7 +577,7 @@ describe("6.7 alert word and 4.6 distress", () => {
       expect(r.plan.state).toBe("ESCALATED");
       expect(r.plan.escalationReason).toEqual({ kind: "alert_word" });
       expect(kinds(r.fx)).toEqual(["send:user:cw_alert_reply", "cancel_jobs", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
-      expect(r.fx[2]).toMatchObject({ critical: true, notifyAnyway: true, params: { reason: "alert_word" } });
+      expect(r.fx[2]).toMatchObject({ critical: true, notifyAnyway: true, params: { reason: { kind: "alert_word" } } });
     }
   });
 
@@ -738,12 +738,12 @@ describe("5.3 / 5.4 guardian", () => {
   it("where is she: latest fix during an escalation, denied otherwise (I4)", () => {
     const r = apply(escalated(), { type: "guardian_location_request" }, ctxAt(at(45), { fixes: [fixFromVenue(at(44), 300)] }));
     expect(r.row).toBe("guardian-location");
-    expect(r.fx[0]).toMatchObject({ to: "guardian", template: "gdn_location_update", params: { lastFix: { minutesAgo: 1 } } });
+    expect(r.fx[0]).toMatchObject({ to: "guardian", template: "gdn_location_update", params: { fix: { at: at(44) }, now: at(45) } }); // fix 1 min old
     const d = apply(active(), { type: "guardian_location_request" }, ctxAt(at(45), { fixes: [fixFromVenue(at(44), 300)] }));
     expect(d.row).toBe("guardian-location-denied");
     expect(d.fx).toHaveLength(1);
     expect(d.fx[0]).toMatchObject({ template: "gdn_location_denied" });
-    expect(JSON.stringify(d.fx)).not.toMatch(/"lat"|lastFix/);
+    expect(JSON.stringify(d.fx)).not.toMatch(/"lat"|lastFix|"fix"/);
   });
 
   it("call her during an escalation -> check-in call to the user", () => {

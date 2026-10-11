@@ -5,11 +5,10 @@
 // No I/O, no clock reads (ctx.now), no randomness, no LLM (I7: the only NLU input is the
 // precomputed ReplyLabel on user_reply). The executor performs effects in order.
 //
-// Template params passed to notify/templates.ts (all optional, absent when unknown):
-//   userName, guardianName, startAt, endAt (Date), timeZone, venueText, planType,
-//   counterpartName, counterpartSource, transport, minutes (extension), reason (escalation
-//   kind or closure reason), trigger, minutesSilent, repeat (n), lastFix
-//   { lat, lng, accuracyM, at, minutesAgo } (guardian templates during escalation only, I4).
+// Template params are the canonical notify/templates.ts TemplateParams (C1): the engine emits
+// exactly the keys the templates read (tz, now, type, reason as an EscalationReason, fix,
+// closeReason, ...). The fix is only attached to guardian templates during an escalation (I4).
+import type { CloseReason, TemplateParams } from "../contracts.js";
 import {
   TERMINAL_STATES,
   WINDOW_STATES,
@@ -93,12 +92,13 @@ class Tx {
   setState(s: PlanState): void {
     this.p.state = s;
   }
-  send(to: "user" | "guardian", template: TemplateId, params: Record<string, unknown> = {}, opts: { track?: boolean; notifyAnyway?: boolean; critical?: boolean } = {}): void {
+  send(to: "user" | "guardian", template: TemplateId, params: TemplateParams = {}, opts: { track?: boolean; notifyAnyway?: boolean; critical?: boolean } = {}): void {
     if (to === "guardian" && !canMessageGuardian(this.p, this.ctx)) {
       this.audit("guardian_send_skipped", { template });
       return;
     }
-    const e: Extract<Effect, { kind: "send" }> = { kind: "send", to, template, params: { ...baseParams(this.p, this.ctx), ...params } };
+    const all: TemplateParams = { ...baseParams(this.p, this.ctx), ...params };
+    const e: Extract<Effect, { kind: "send" }> = { kind: "send", to, template, params: all };
     if (opts.track) e.track = true;
     if (opts.notifyAnyway) e.notifyAnyway = true;
     if (opts.critical) e.critical = true;
@@ -145,29 +145,31 @@ export function canMessageGuardian(p: EnginePlan, ctx: EngineContext): boolean {
   return !!p.guardianId && !!ctx.guardian && ctx.guardian.linkStatus === "accepted" && !ctx.guardian.stopped;
 }
 
-function baseParams(p: EnginePlan, ctx: EngineContext): Record<string, unknown> {
-  const out: Record<string, unknown> = { timeZone: ctx.timeZone };
+function baseParams(_p: EnginePlan, ctx: EngineContext): TemplateParams {
+  const out: TemplateParams = { tz: ctx.timeZone, now: ctx.now };
   if (ctx.user.displayName) out.userName = ctx.user.displayName;
   if (ctx.guardian?.displayName) out.guardianName = ctx.guardian.displayName;
   return out;
 }
 
-function planParams(p: EnginePlan): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  if (p.type) out.planType = p.type;
+function planParams(p: EnginePlan): TemplateParams {
+  const out: TemplateParams = { locationMode: p.locationMode };
+  if (p.type) out.type = p.type;
   if (p.startAt) out.startAt = p.startAt;
   if (p.endAt) out.endAt = p.endAt;
   if (p.venueText) out.venueText = p.venueText;
   if (p.counterpartName) out.counterpartName = p.counterpartName;
   if (p.counterpartSource) out.counterpartSource = p.counterpartSource;
   if (p.transport) out.transport = p.transport;
+  if (p.buyOrSell) out.buyOrSell = p.buyOrSell;
   return out;
 }
 
-function lastFixParam(tx: Tx): Record<string, unknown> | null {
+/** The latest fix for guardian templates (5.1): coordinates, accuracy, and time. Age is rendered from `now`. */
+function fixParam(tx: Tx): NonNullable<TemplateParams["fix"]> | null {
   const f = latestQualityFix(tx.ctx.fixes);
   if (!f) return null;
-  return { lat: f.lat, lng: f.lng, accuracyM: f.accuracyM, at: f.at, minutesAgo: Math.max(0, Math.round((tx.now.getTime() - f.at.getTime()) / MIN_MS)) };
+  return { lat: f.lat, lng: f.lng, accuracyM: f.accuracyM, at: f.at };
 }
 
 // ---------- event keys and the transition table ----------
@@ -233,7 +235,7 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     when: (p, e, ctx) => requiredFieldsPresent(p) && guardianAcceptedNow(e.guardianAccepted, ctx),
     run: (tx) => {
       armPlan(tx);
-      tx.send("user", "plan_locked_in", { ...planParams(tx.p), locationAskAt: new Date(Math.max(tx.now.getTime(), tx.p.startAt!.getTime() - T_MINUS_MS)) });
+      tx.send("user", "plan_locked_in", { ...planParams(tx.p), soon: tx.p.startAt!.getTime() - T_MINUS_MS <= tx.now.getTime() });
     },
   }),
   row({
@@ -587,7 +589,7 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     when: (p) => p.guardianAckAt === null && p.guardianRepeatCount < GUARDIAN_REPEAT_MAX,
     run: (tx) => {
       tx.p.guardianRepeatCount += 1;
-      tx.send("guardian", "gdn_alert_repeat", { ...alertParams(tx), repeat: tx.p.guardianRepeatCount }, { notifyAnyway: true, critical: true });
+      tx.send("guardian", "gdn_alert_repeat", alertParams(tx), { notifyAnyway: true, critical: true });
       if (tx.p.guardianRepeatCount < GUARDIAN_REPEAT_MAX) tx.schedule("guardian_repeat", tx.at(GUARDIAN_REPEAT_MS));
     },
   }),
@@ -618,8 +620,7 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     from: ["ESCALATED"],
     on: "guardian_location_request",
     run: (tx) => {
-      const lastFix = lastFixParam(tx);
-      tx.send("guardian", "gdn_location_update", { ...alertParams(tx), lastFix });
+      tx.send("guardian", "gdn_location_update", alertParams(tx));
     },
   }),
   row({
@@ -883,6 +884,8 @@ function startLadder(tx: Tx, trigger: TriggerId | null, cls: LadderClass, templa
   p.ladderStartedAt = tx.now;
   p.ladderStepAt = tx.now;
   p.flags.clarifySent = false;
+  p.ladderMessages = 1;
+  p.checkinCallPlaced = null;
   tx.cancel(LADDER_JOBS);
   tx.send("user", template ?? l0Template(trigger, cls), {}, { track: true });
   tx.schedule("ladder", tx.at(stepDelayMs(cls, "L1", tx.multiplier())), { step: "L1", token: ladderToken(p) });
@@ -902,6 +905,8 @@ function enterOvertime(tx: Tx): void {
   p.ladderStartedAt = tx.now;
   p.ladderStepAt = tx.now;
   p.flags.clarifySent = false;
+  p.ladderMessages = 1;
+  p.checkinCallPlaced = null;
   const atCap = p.totalExtensionMin >= MAX_IMPLICIT_EXTENSION_MIN;
   tx.send("user", atCap ? "ot_max_confirm" : "ot_overtime", {}, { track: true });
   tx.schedule("overtime_timeout", tx.at(stepDelayMs("overtime", "L1", tx.multiplier())), { token: ladderToken(p) });
@@ -934,6 +939,7 @@ function advanceLadder(tx: Tx, step: "L1" | "L2" | "L3"): void {
   tx.setState("CHECKING");
   p.ladderStep = step;
   p.ladderStepAt = tx.now;
+  p.ladderMessages += 1;
   if (step === "L1") {
     tx.send("user", "lad_l1", {}, { track: true, notifyAnyway: true });
     tx.schedule("ladder", tx.at(stepDelayMs(cls, "L2", tx.multiplier())), { step: "L2", token: ladderToken(p) });
@@ -952,6 +958,7 @@ function clearLadder(p: EnginePlan): void {
   p.ladderStartedAt = null;
   p.ladderStepAt = null;
   p.flags.clarifySent = false;
+  p.ladderMessages = 0;
 }
 
 /** The user answered: clear the ladder and suppress the same trigger for 20 min (7.3). */
@@ -969,7 +976,7 @@ function escalate(tx: Tx, reason: EscalationReason): void {
     // Already escalated: a stronger reason (alert word, distress) is relayed, never repeated otherwise.
     if (p.escalationReason?.kind !== reason.kind && (reason.kind === "alert_word" || reason.kind === "distress")) {
       p.escalationReason = reason;
-      tx.send("guardian", "gdn_alert", { ...alertParams(tx), reason: reason.kind }, { notifyAnyway: true, critical: true });
+      tx.send("guardian", "gdn_alert", alertParams(tx), { notifyAnyway: true, critical: true });
     }
     tx.audit("escalation_reason", { reason: reason.kind });
     return;
@@ -993,17 +1000,20 @@ function escalate(tx: Tx, reason: EscalationReason): void {
   tx.audit("escalated", { reason: reason.kind });
 }
 
-function alertParams(tx: Tx): Record<string, unknown> {
+function alertParams(tx: Tx): TemplateParams {
   const p = tx.p;
   const r = p.escalationReason;
-  const out: Record<string, unknown> = { ...planParams(p), lastFix: lastFixParam(tx) };
+  const out: TemplateParams = { ...planParams(p), fix: fixParam(tx) };
   if (r) {
-    out.reason = r.kind;
+    out.reason = { ...r };
     if (r.kind === "no_reply") {
       out.trigger = r.trigger;
       // I11: repeats and updates state the silence as of now, not as of the first alert.
       const sinceAlert = p.escalatedAt ? Math.max(0, Math.round((tx.now.getTime() - p.escalatedAt.getTime()) / MIN_MS)) : 0;
       out.minutesSilent = r.minutesSilent + sinceAlert;
+      // I11: count only what was really sent, and claim a call only when call_result said so.
+      if (p.ladderMessages > 0) out.messagesUnanswered = p.ladderMessages;
+      out.callPlaced = p.checkinCallPlaced === true;
     }
   }
   return out;
@@ -1056,13 +1066,13 @@ function resolveByReply(tx: Tx, _messageId: string | null): void {
   if (wasOvertime) {
     if (p.totalExtensionMin >= MAX_IMPLICIT_EXTENSION_MIN) {
       // 4.7: after 4 h of implicit extensions, close on the user's OK.
-      tx.send("user", "close_done_ack", { reason: "max_extension" });
+      tx.send("user", "close_done_ack", { closed: true, closeReason: "max_extension" });
       closePlan(tx, "CLOSED", "max_extension");
       return;
     }
     extendEnd(tx, DEFAULT_EXTENSION_MIN, true);
     tx.setState("ACTIVE");
-    tx.send("user", "act_extend_confirm", { endAt: p.endAt, minutes: DEFAULT_EXTENSION_MIN });
+    tx.send("user", "act_extend_confirm", { endAt: p.endAt });
     return;
   }
   if (p.endAt && tx.now.getTime() >= p.endAt.getTime() + p.graceMin * MIN_MS) {
@@ -1172,7 +1182,7 @@ function onExtend(tx: Tx, minutes: number): void {
   } else {
     extendEnd(tx, minutes, false);
   }
-  tx.send("user", "act_extend_confirm", { endAt: p.endAt, minutes });
+  tx.send("user", "act_extend_confirm", { endAt: p.endAt });
 }
 
 function onDone(tx: Tx): void {
@@ -1185,14 +1195,14 @@ function onDone(tx: Tx): void {
     p.pendingSpot = null;
     tx.setState("CLOSING");
     p.closedAt = null;
-    tx.send("user", "close_done_ack", { closing: true });
+    tx.send("user", "close_done_ack", { closed: false });
     if (wasEscalated) tx.send("guardian", "gdn_user_ok_now");
     tx.schedule("closing_timeout", tx.at(CLOSING_TIMEOUT_MS));
     // Home arrival is measured from now (closedAt doubles as the CLOSING start marker).
     p.closedAt = tx.now;
     return;
   }
-  tx.send("user", "close_done_ack", { closing: false });
+  tx.send("user", "close_done_ack", { closed: true });
   closePlan(tx, "CLOSED", wasEscalated ? "done_after_alert" : "done");
 }
 
@@ -1231,6 +1241,8 @@ function onGuardianCallRequest(tx: Tx): void {
     p.ladderTrigger = null;
     p.ladderStartedAt = tx.now;
     p.flags.clarifySent = false;
+    p.ladderMessages = 0;
+    p.checkinCallPlaced = null;
   } else if (p.ladderClass && isUpgrade(p.ladderClass, "guardian_requested")) {
     p.ladderClass = "guardian_requested";
   }
@@ -1253,7 +1265,7 @@ function onGuardianUpdate(tx: Tx): void {
       p.lastGuardianUpdateAt = tx.now;
       p.lastGuardianUpdateLat = f.lat;
       p.lastGuardianUpdateLng = f.lng;
-      tx.send("guardian", "gdn_location_update", { ...alertParams(tx), lastFix: lastFixParam(tx) });
+      tx.send("guardian", "gdn_location_update", alertParams(tx));
     }
   }
   if (tx.now.getTime() + GUARDIAN_UPDATE_MS < end) tx.schedule("guardian_update", tx.at(GUARDIAN_UPDATE_MS));
@@ -1265,7 +1277,7 @@ function onGuardianUpdate(tx: Tx): void {
  * Close the plan. Cancels every job, stops the watcher, schedules the 24 h purge (I12), and
  * sends the guardian all-clear only if notifyGuardianStartEnd or an escalation reached them (4.8).
  */
-function closePlan(tx: Tx, to: "CLOSED" | "CANCELLED" | "EXPIRED", reason: string): void {
+function closePlan(tx: Tx, to: "CLOSED" | "CANCELLED" | "EXPIRED", reason: CloseReason): void {
   const p = tx.p;
   const wasInWindow = WINDOW_STATES.includes(p.state);
   tx.cancel();
@@ -1274,7 +1286,7 @@ function closePlan(tx: Tx, to: "CLOSED" | "CANCELLED" | "EXPIRED", reason: strin
   const guardianNeedsAllClear = (p.notifyGuardianStartEnd || p.escalatedAt !== null) && to !== "EXPIRED";
   tx.setState(to);
   p.closedAt = tx.now;
-  if (guardianNeedsAllClear) tx.send("guardian", "gdn_all_clear", { reason });
+  if (guardianNeedsAllClear) tx.send("guardian", "gdn_all_clear", { closeReason: reason });
   if (wasInWindow) tx.emit({ kind: "stop_watch" });
   tx.schedule("purge", tx.at(PURGE_AFTER_MS));
 }
