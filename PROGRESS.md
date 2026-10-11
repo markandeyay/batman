@@ -4,11 +4,9 @@ Resume file for Batman. A fresh Claude Code session must be able to continue fro
 Spec: docs/BATMAN_SPEC.md. Decisions: DECISIONS.md. Verified APIs: docs/PHOTON_NOTES.md.
 
 ## Current phase
-Phase 0b nearly done (S2 live call pending). Phases 1 to 4 logic in progress in parallel:
-- core-engineer: DONE and merged to main (plan engine, ladder, scheduler, risk, store, replay; 296 tests total pass).
-- conversation-engineer: running in a worktree (dialogue, NLU, code words, templates, evals). Told about guardian-text-first and pin changes.
-- integration-engineer: running in a worktree (gateway, channel, executor, Find My source, control port, terminal, app.ts).
-- Main conversation will write apps/server/src/index.ts and wire the dialogue manager after both merge, then run test-engineer and safety-reviewer.
+All components merged to main; pnpm verify green (875 tests + 2 expected-fail accuracy gaps). Spikes done (docs/SPIKES.md).
+In progress: one engineer fixing all 21 safety-review findings (docs/reviews/2026-10-10-safety-phases-1-4.md) plus X1 to X4 (GPS outlier rejection, removing sim glue, guardian-unreachable handling, AWAITING_GUARDIAN expiry), in a worktree.
+Next after that merges: write apps/server/src/index.ts (wire dialogue manager to app.ts using the GLUE in tests/sim/fullstack.ts as blueprint), run pnpm chat, rerun safety-reviewer, then live onboarding from the human iPhone and the guided session (16.4). Refinement loop per 16.5 with the S6 fallback (no probe).
 
 ## Done (2026-10-10)
 - Repo, .gitignore, .gitattributes, CLAUDE.md, .claude/settings.json, .claude/agents/*.md (spec 13). Deny rule narrowed so .env.example is readable.
