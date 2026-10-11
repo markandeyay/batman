@@ -53,13 +53,54 @@ export function isUsableFix(f: Fix, now: Date): boolean {
   return hasUsableQuality(f) && Math.abs(now.getTime() - f.at.getTime()) <= MAX_FIX_AGE_MS;
 }
 
-/** Fixes that pass the quality bar, ascending by time, deduped on (at, lat, lng). */
+/** X1 (7.2 refinement): a fix implying more than this speed from the last accepted fix is an outlier. */
+export const OUTLIER_MAX_SPEED_MPS = 50;
+/** X1: a jump larger than 3 x accuracy + 150 m is an outlier when a following fix returns. */
+export const OUTLIER_JUMP_BASE_M = 150;
+/** X1: how many following fixes may show the return (two consecutive outliers are common at 3%). */
+export const OUTLIER_LOOKAHEAD = 2;
+
+export function outlierJumpM(f: Fix): number {
+  return 3 * f.accuracyM + OUTLIER_JUMP_BASE_M;
+}
+
+/** Fixes that pass the quality bar, ascending by time, deduped on (at, lat, lng), outliers removed. */
 export function qualityFixes(fixes: readonly Fix[]): Fix[] {
-  const out = fixes.filter(hasUsableQuality).slice().sort((a, b) => a.at.getTime() - b.at.getTime());
-  return out.filter((f, i) => {
-    const p = out[i - 1];
+  const sorted = fixes.filter(hasUsableQuality).slice().sort((a, b) => a.at.getTime() - b.at.getTime());
+  const deduped = sorted.filter((f, i) => {
+    const p = sorted[i - 1];
     return !p || p.at.getTime() !== f.at.getTime() || p.lat !== f.lat || p.lng !== f.lng;
   });
+  return rejectOutliers(deduped);
+}
+
+/**
+ * X1 (7.2 refinement): drop a fix whose implied speed from the last accepted fix exceeds
+ * 50 m/s, or whose jump from it exceeds 3 x accuracy + 150 m while one of the next two fixes
+ * comes back within that distance of the last accepted fix. Trailing fixes (nothing after them
+ * yet) are kept; detectDeparture asks for one more fix when a run starts with such a jump.
+ */
+export function rejectOutliers(q: readonly Fix[]): Fix[] {
+  const out: Fix[] = [];
+  for (let i = 0; i < q.length; i++) {
+    const f = q[i]!;
+    const prev = out[out.length - 1];
+    if (!prev) {
+      out.push(f);
+      continue;
+    }
+    const d = haversineM(prev, f);
+    const dt = (f.at.getTime() - prev.at.getTime()) / 1000;
+    if (dt > 0 && d / dt > OUTLIER_MAX_SPEED_MPS) continue;
+    if (d > outlierJumpM(f)) {
+      const next = q.slice(i + 1, i + 1 + OUTLIER_LOOKAHEAD);
+      // A return is a later fix near the last accepted fix and nearer to it than to the suspect
+      // (so ordinary walking progress is never mistaken for a return).
+      if (next.some((n) => haversineM(n, prev) <= outlierJumpM(n) && haversineM(n, prev) < haversineM(n, f))) continue;
+    }
+    out.push(f);
+  }
+  return out;
 }
 
 export function latestUsableFix(fixes: readonly Fix[], now: Date): Fix | null {
@@ -96,12 +137,19 @@ export function venueRadiusM(type: PlanType | null, accuracyM: number): number {
 
 export type Zone = "inside" | "outside" | "band";
 
+/** X1 (7.2 refinement): hysteresis band is 0.5 x radius, capped so large geofences (viewing) still confirm departures within 3 fixes. */
+export const HYSTERESIS_MAX_BAND_M = 60;
+
+export function hysteresisBandM(radius: number): number {
+  return Math.min(radius * (HYSTERESIS - 1), HYSTERESIS_MAX_BAND_M);
+}
+
 /** Inside: distance <= radius. Outside: distance > 1.5 x radius. Between: hysteresis band. */
 export function zoneOf(f: Fix, center: LatLng, baseRadiusM: number): Zone {
   const radius = Math.max(baseRadiusM, 2 * f.accuracyM);
   const d = haversineM(f, center);
   if (d <= radius) return "inside";
-  if (d > radius * HYSTERESIS) return "outside";
+  if (d > radius + hysteresisBandM(radius)) return "outside";
   return "band";
 }
 
@@ -143,6 +191,14 @@ export function detectDeparture(fixes: readonly Fix[], center: LatLng, baseRadiu
   const runStartIdx = i + 1;
   const run = q.slice(runStartIdx);
   if (run.length < 2) return null;
+  // X1: a run that starts with an outlier-sized jump AND whose first two fixes are also that far
+  // apart looks like two trailing outliers no later fix has disproved yet; ask for a third
+  // outside fix before calling it a departure.
+  const before = q[runStartIdx - 1];
+  const jumpy = (a: Fix, b: Fix) => haversineM(a, b) > outlierJumpM(b);
+  // A vehicle moves steadily away (the second fix is farther by more than a jump); outliers do not.
+  const recedes = haversineM(run[1]!, center) - haversineM(run[0]!, center) > outlierJumpM(run[1]!);
+  if (before && run.length < 3 && jumpy(before, run[0]!) && jumpy(run[0]!, run[1]!) && !recedes) return null;
   if (last.at.getTime() - run[0]!.at.getTime() < DEPARTURE_MIN_SPAN_MS) return null;
   const hadInside = q.slice(0, runStartIdx).some((f) => zoneOf(f, center, baseRadiusM) === "inside");
   if (!hadInside) return null;
