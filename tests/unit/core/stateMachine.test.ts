@@ -84,7 +84,8 @@ describe("6.2 DRAFT and arming (I1)", () => {
     expect(r.row).toBe("draft-go-awaiting");
     expect(r.plan.state).toBe("AWAITING_GUARDIAN");
     expect(sends(r.fx)).toEqual(["user:plan_awaiting_guardian"]);
-    expect(sched(r.fx, "draft_expire")[0]!.runAt).toEqual(at(0)); // X4: expires at the start
+    // X4 revised (2026-10-10 live test): waits until the planned END, not the start.
+    expect(sched(r.fx, "draft_expire")[0]!.runAt).toEqual(at(120));
   });
 
   it("I1: arming needs the link to be accepted in the store too, not just the event", () => {
@@ -117,7 +118,7 @@ describe("6.2 DRAFT and arming (I1)", () => {
     expect(sends(r.fx)).toEqual(["user:plan_time_confirm_ask"]);
   });
 
-  it("draft expires after 12 h; AWAITING_GUARDIAN expires at the start and says so once (X4)", () => {
+  it("draft expires after 12 h; AWAITING_GUARDIAN expires at the planned end and says so once (X4 revised)", () => {
     const p = basePlan({ createdAt: at(-240) });
     expect(apply(p, timer("draft_expire"), ctxAt(at(-240 + 11 * 60))).plan.state).toBe("DRAFT");
     const r = apply(p, timer("draft_expire"), ctxAt(at(-240 + 12 * 60)));
@@ -127,7 +128,9 @@ describe("6.2 DRAFT and arming (I1)", () => {
     expect(sched(r.fx, "purge")).toHaveLength(1);
     const aw = basePlan({ state: "AWAITING_GUARDIAN" });
     expect(apply(aw, timer("draft_expire"), ctxAt(at(-1))).plan.state).toBe("AWAITING_GUARDIAN");
-    const ex = apply(aw, timer("draft_expire"), ctxAt(at(0)));
+    expect(apply(aw, timer("draft_expire"), ctxAt(at(0))).plan.state).toBe("AWAITING_GUARDIAN"); // start is not the end
+    expect(apply(aw, timer("draft_expire"), ctxAt(at(119))).plan.state).toBe("AWAITING_GUARDIAN");
+    const ex = apply(aw, timer("draft_expire"), ctxAt(at(120)));
     expect(ex.plan.state).toBe("EXPIRED");
     expect(sends(ex.fx)).toEqual(["user:plan_expired_unarmed"]);
   });

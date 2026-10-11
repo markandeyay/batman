@@ -1,6 +1,7 @@
 // H4 (I16, I8, 4.4.6): edits after arming reschedule the timers that depend on the edited
 // fields, and move straight to PRE_MEETUP or ACTIVE when the new start is near or past.
-// X4: a plan stuck in AWAITING_GUARDIAN past its start tells the user once that it expired.
+// X4 (revised 2026-10-10 after the live test): a plan stuck in AWAITING_GUARDIAN waits until its
+// planned END, never expires the instant its start passes, and arms the moment the guardian accepts.
 import { describe, expect, it } from "vitest";
 import type { Effect, JobKind } from "../../apps/server/src/contracts.js";
 import { applyEvent, T_MINUS_MS } from "../../apps/server/src/plan/stateMachine.js";
@@ -68,27 +69,82 @@ describe("H4 plan_edited", () => {
   });
 });
 
-describe("X4 AWAITING_GUARDIAN past its start", () => {
-  it("arming without a guardian schedules the expiry at the start", () => {
+describe("X4 revised: AWAITING_GUARDIAN waits until the planned end", () => {
+  const pending = { guardian: { displayName: "Madhu", linkStatus: "pending" as const, stopped: false } };
+
+  it("arming without a guardian schedules the expiry at the planned end", () => {
     const p = basePlan({ state: "DRAFT", startAt: at(60), endAt: at(180) });
-    const r = applyEvent(p, { type: "arm", guardianAccepted: false }, ctxAt(at(0), { guardian: { displayName: "Priya", linkStatus: "pending", stopped: false } }));
+    const r = applyEvent(p, { type: "arm", guardianAccepted: false }, ctxAt(at(0), pending));
     expect(r.plan.state).toBe("AWAITING_GUARDIAN");
-    expect(scheduled(r.effects)).toContainEqual({ kind: "draft_expire", runAt: at(60) });
+    expect(scheduled(r.effects)).toContainEqual({ kind: "draft_expire", runAt: at(180) });
+    expect(userSends(r.effects)).toEqual(["plan_awaiting_guardian"]);
   });
 
-  it("at the start the plan expires and the user is told once", () => {
+  it("live bug: a plan starting NOW does not expire instantly; the user is told once, honestly", () => {
+    const p = basePlan({ state: "DRAFT", startAt: at(0), endAt: at(60) });
+    const r = applyEvent(p, { type: "arm", guardianAccepted: false }, ctxAt(at(0), pending));
+    expect(r.plan.state).toBe("AWAITING_GUARDIAN");
+    expect(userSends(r.effects)).toEqual(["plan_awaiting_guardian"]); // never plan_expired_unarmed here
+    const send = r.effects.find((e) => e.kind === "send" && e.template === "plan_awaiting_guardian") as Extract<Effect, { kind: "send" }>;
+    expect(send.params?.soon).toBe(true);
+    expect(scheduled(r.effects)).toContainEqual({ kind: "draft_expire", runAt: at(60) });
+    // The expiry timer firing early (start passed) changes nothing.
+    const early = applyEvent(r.plan, { type: "timer", job: "draft_expire" }, ctxAt(at(1), pending));
+    expect(early.plan.state).toBe("AWAITING_GUARDIAN");
+    expect(userSends(early.effects)).toEqual([]);
+  });
+
+  it("at the planned end the plan expires with the honest copy, once", () => {
     const p = basePlan({ state: "AWAITING_GUARDIAN", startAt: at(60), endAt: at(180) });
-    const r = applyEvent(p, { type: "timer", job: "draft_expire" }, ctxAt(at(60)));
+    expect(applyEvent(p, { type: "timer", job: "draft_expire" }, ctxAt(at(60))).plan.state).toBe("AWAITING_GUARDIAN");
+    const r = applyEvent(p, { type: "timer", job: "draft_expire" }, ctxAt(at(180)));
     expect(r.plan.state).toBe("EXPIRED");
     expect(userSends(r.effects)).toEqual(["plan_expired_unarmed"]);
-    const again = applyEvent(r.plan, { type: "timer", job: "draft_expire" }, ctxAt(at(61)));
+    const again = applyEvent(r.plan, { type: "timer", job: "draft_expire" }, ctxAt(at(181)));
     expect(userSends(again.effects)).toEqual([]);
   });
 
-  it("an edit while awaiting the guardian moves the expiry to the new start", () => {
+  it("an edit while awaiting the guardian moves the expiry to the new end", () => {
     const p = basePlan({ state: "AWAITING_GUARDIAN", startAt: at(300), endAt: at(420) });
     const r = applyEvent(p, { type: "plan_edited", fields: ["startAt"] }, ctxAt(at(0)));
     expect(cancelled(r.effects)).toContain("draft_expire");
-    expect(scheduled(r.effects)).toContainEqual({ kind: "draft_expire", runAt: at(300) });
+    expect(scheduled(r.effects)).toContainEqual({ kind: "draft_expire", runAt: at(420) });
+  });
+
+  it("guardian accepts well before the start: ARMED with normal timers", () => {
+    const p = basePlan({ state: "AWAITING_GUARDIAN", startAt: at(120), endAt: at(240) });
+    const r = applyEvent(p, { type: "guardian_accepted" }, ctxAt(at(0)));
+    expect(r.plan.state).toBe("ARMED");
+    expect(scheduled(r.effects).map((j) => j.kind)).toEqual(expect.arrayContaining(["t_minus_30", "start"]));
+  });
+
+  it("guardian accepts within 30 min of the start: straight to PRE_MEETUP with the Find My request", () => {
+    const p = basePlan({ state: "AWAITING_GUARDIAN", startAt: at(10), endAt: at(130) });
+    const r = applyEvent(p, { type: "guardian_accepted" }, ctxAt(at(0)));
+    expect(r.plan.state).toBe("PRE_MEETUP");
+    expect(r.effects.some((e) => e.kind === "request_location")).toBe(true);
+    expect(scheduled(r.effects)).toContainEqual({ kind: "start", runAt: at(10) });
+    expect(cancelled(r.effects)).toContain("draft_expire");
+    expect(userSends(r.effects)[0]).toBe("plan_armed_now");
+  });
+
+  it("guardian accepts after the start but before the end: straight to ACTIVE, location requested", () => {
+    const p = basePlan({ state: "AWAITING_GUARDIAN", startAt: at(0), endAt: at(60) });
+    const r = applyEvent(p, { type: "guardian_accepted" }, ctxAt(at(20)));
+    expect(r.plan.state).toBe("ACTIVE");
+    expect(r.effects.some((e) => e.kind === "request_location")).toBe(true);
+    expect(scheduled(r.effects).map((j) => j.kind)).toContain("end_grace");
+    expect(cancelled(r.effects)).toContain("draft_expire");
+    const sends = userSends(r.effects);
+    expect(sends[0]).toBe("plan_armed_now");
+    expect(sends).toContain("loc_request_intro");
+    expect(sends).not.toContain("loc_time_only"); // the share was just requested; give it time
+  });
+
+  it("guardian never accepts the late share: time-only notice once the poll window ends", () => {
+    const p = basePlan({ state: "AWAITING_GUARDIAN", startAt: at(0), endAt: at(60) });
+    const r = applyEvent(p, { type: "guardian_accepted" }, ctxAt(at(20)));
+    const gaveUp = applyEvent(r.plan, { type: "timer", job: "loc_poll" }, ctxAt(at(35), { share: { visible: false, expiresAt: null } }));
+    expect(userSends(gaveUp.effects)).toEqual(["loc_time_only"]);
   });
 });
