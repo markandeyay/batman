@@ -148,7 +148,9 @@ async function handleUser(ports: DialoguePorts, user: User, plan: Plan | null, m
         return "reaction_dispatched";
       }
       const ds = await ports.repo.getDialogueState(user.id);
-      if (ds?.pending?.kind === "go" && plan && (c.emoji === "like" || c.emoji === "love" || c.emoji === "emphasize")) {
+      // L7 (I1): only a positive tapback on Batman's plan confirmation means "go".
+      const onConfirm = ds?.pending?.kind === "go" && !!ds.pending.confirmMessageId && c.targetMessageId === ds.pending.confirmMessageId;
+      if (onConfirm && plan && (c.emoji === "like" || c.emoji === "love" || c.emoji === "emphasize")) {
         return handleIntakeText(ports, user, plan, { id: msg.id, text: "go" });
       }
       return "reaction_ignored";

@@ -213,7 +213,7 @@ async function sendConfirmation(ports: DialoguePorts, user: User, plan: Plan, st
   if (cur && plan.guardianId !== cur.guardian.id) patch.guardianId = cur.guardian.id;
   await ports.repo.updatePlanFields(plan.id, patch);
   const updated: Plan = { ...plan, ...patch } as Plan;
-  await sendTemplate(ports, user.addressE164, "plan_confirm", {
+  const sent = await sendTemplate(ports, user.addressE164, "plan_confirm", {
     plan: updated,
     userName: user.displayName,
     guardianName: cur?.guardian.displayName ?? null,
@@ -222,7 +222,7 @@ async function sendConfirmation(ports: DialoguePorts, user: User, plan: Plan, st
     durationMin: duration,
     tip: tipFor(updated, intake),
   });
-  await saveState(ports, user, { ...state, intake, pending: { kind: "go", planId: plan.id } });
+  await saveState(ports, user, { ...state, intake, pending: { kind: "go", planId: plan.id, confirmMessageId: sent?.id ?? null } });
   return "intake_confirm";
 }
 

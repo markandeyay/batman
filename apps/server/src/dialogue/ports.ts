@@ -78,7 +78,8 @@ export type DialogueEvent = EngineEvent;
 /** Per-user conversational context, persisted (resumable, spec 4.2). JSON-serializable. */
 export interface DialogueState {
   pending?:
-    | { kind: "go"; planId: string }
+    /** confirmMessageId: Batman's plan_confirm message; only a tapback on it arms (L7, I1). */
+    | { kind: "go"; planId: string; confirmMessageId?: string | null }
     | { kind: "time_confirm"; planId: string; proposed: string }
     | { kind: "time_past"; planId: string; proposed: string }
     | { kind: "replace"; planId: string; text: string }
