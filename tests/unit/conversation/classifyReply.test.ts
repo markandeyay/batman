@@ -20,7 +20,8 @@ describe("classifyReply (spec 9.3)", () => {
   });
 
   it("uses the fast model for everything else", async () => {
-    const r = await classifyReply({ text: "yeah lol" }, model("OK", 0.95));
+    // "yeah lol" is now settled by the clear-reply rule; use text only the model can judge.
+    const r = await classifyReply({ text: "honestly hes been really sweet" }, model("OK", 0.95));
     expect(r).toMatchObject({ label: "OK", source: "model" });
   });
 
@@ -49,8 +50,9 @@ describe("classifyReply (spec 9.3)", () => {
 
   it("falls back when the model exceeds the timeout", async () => {
     const slow = new FakeLlmProvider(() => ({ label: "NOT_OK", command: null, extendMin: null, confidence: 1 }), 200);
-    const r = await classifyReply({ text: "im good" }, slow, { timeoutMs: 20 });
-    expect(r).toMatchObject({ label: "OK", source: "fallback" });
+    // "im good" is now settled by the clear-reply rule before any model call; use text that needs the model.
+    const r = await classifyReply({ text: "this place is pretty nice" }, slow, { timeoutMs: 20 });
+    expect(r).toMatchObject({ label: "AMBIGUOUS", source: "fallback" });
   });
 
   it("no model configured uses rules", async () => {
@@ -60,5 +62,36 @@ describe("classifyReply (spec 9.3)", () => {
   it("model COMMAND extend defaults to 30", async () => {
     const r = await classifyReply({ text: "staying out with them for dinner" }, model("COMMAND", 0.9, { command: "extend" }));
     expect(r).toMatchObject({ label: "COMMAND", command: "extend", extendMin: 30 });
+  });
+
+  describe("clear-reply rules (deterministic, before the model)", () => {
+    const never = new FakeLlmProvider(() => { throw new Error("model must not be called"); });
+    it("whole-message clear positives are OK without the model", async () => {
+      for (const t of ["perfect", "amazing", "yeah lol", "im good", "😊", "👍"]) {
+        expect(await classifyReply({ text: t, state: "CHECKING", lastPrompt: "Hey, everything good?" }, never)).toMatchObject({ label: "OK", source: "rule" });
+      }
+    });
+    it("bare negatives to a wellbeing check are NOT_OK", async () => {
+      for (const t of ["no", "naw", "nope", "nah"]) {
+        expect(await classifyReply({ text: t, state: "CHECKING", lastPrompt: "Hey, everything good?" }, never)).toMatchObject({ label: "NOT_OK", source: "rule" });
+      }
+    });
+    it("a bare no to \"Still out?\" is not treated as distress", async () => {
+      const r = await classifyReply({ text: "no", state: "OVERTIME", lastPrompt: "Still out? Reply +30 if you are staying" }, model("AMBIGUOUS", 0.7));
+      expect(r.label).toBe("AMBIGUOUS");
+    });
+    it("a question back is never a clear positive", async () => {
+      for (const q of ["ok?", "k?", "good?"]) {
+        const r = await classifyReply({ text: q, state: "CHECKING" }, model("AMBIGUOUS", 0.7));
+        expect(r.label).toBe("AMBIGUOUS");
+      }
+    });
+    it("fear emoji alone is NOT_OK", async () => {
+      expect(await classifyReply({ text: "😰", state: "CHECKING" }, never)).toMatchObject({ label: "NOT_OK", source: "rule" });
+    });
+    it("a positive word with a distress term still goes to the model path", async () => {
+      const r = await classifyReply({ text: "fine but he is kinda pushy", state: "CHECKING" }, model("OK", 0.99));
+      expect(r.label).not.toBe("OK");
+    });
   });
 });

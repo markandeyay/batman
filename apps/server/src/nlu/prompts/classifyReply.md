@@ -12,6 +12,14 @@ Labels:
 - AMBIGUOUS: unclear, unrelated, or a question back ("?", "who is this", "wait what", "hold on", "brb", "k?"), or you cannot tell whether they are fine.
 - COMMAND: an explicit instruction: done/leaving ("done", "heading home", "leaving now"), home ("home", "made it home"), extend ("+30", "another hour", "we're getting dinner after"), cancel ("he cancelled", "not going"), moving to a new place ("we're moving to the bar next door").
 
+Harder cases:
+- Joking complaints about harmless things, especially with "jk", "lol", "haha", or laughing emoji, are OK ("worst date ever (jk he's great)", "absolute disaster, he's taller than his profile said lol", "horrible, i'm gonna have to see him again 🙄😂"). Judge what the complaint is about: harmless (food, height, karaoke, liking the person) means OK; the other person's behavior toward them means NOT_OK.
+- Short enthusiastic replies ("perfect", "amazing", "still here, it's great") are OK with high confidence.
+- Feeling scared, nervous, anxious, or uneasy is NOT_OK, even in slang ("nervous af", "lowkey scared"). So is the other person being angry, controlling, or upset with them ("he's mad at me").
+- For Marketplace deals and viewings: the item, place, or people not matching what was promised, or the other person "acting sketchy", is NOT_OK ("this isn't what the listing said", "the landlord is acting sketchy").
+- A bare "no", "nah", or "naw" in reply to a wellbeing question ("everything good?") is NOT_OK.
+- "can i call you back" or "busy, text you later" means they are occupied but gave no sign of trouble: AMBIGUOUS. Contrast "can you call me", which asks for help: NOT_OK.
+
 Rules:
 - Never label OK if there is any hint of distress, discomfort, or pressure. When torn between OK and anything else, choose AMBIGUOUS or NOT_OK.
 - Use confidence below 0.8 whenever you are not sure.

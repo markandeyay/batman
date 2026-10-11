@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { PlanState, PlanType } from "../contracts.js";
 import type { LlmProvider } from "./llm.js";
 import { loadPrompt } from "./prompts.js";
-import { hasDistressLexicon, isExplicitDistress, matchKeywordRule, weakReplyLabel } from "./rules.js";
+import { hasDistressLexicon, isExplicitDistress, isNegative, matchKeywordRule, weakReplyLabel } from "./rules.js";
 
 export const REPLY_LABELS = ["OK", "NOT_OK", "AMBIGUOUS", "COMMAND"] as const;
 export const REPLY_COMMANDS = ["done", "home", "extend", "cancel", "moving"] as const;
@@ -83,6 +83,35 @@ export function rulePrePass(text: string): ReplyResult | null {
   }
 }
 
+const FEAR_EMOJI = /^[\s\u{1F630}\u{1F628}\u{1F631}\u{1F61F}\u{1F625}\u{1F622}\u{1F62D}\u{1F198}\u{1F616}\u{1F623}\u{1F627}\u{1F626}\u{1FAE3}]+$/u;
+const POSITIVE_EMOJI_ONLY = /^[\s\u{1F44D}\u{2764}\u{FE0F}\u{1F602}\u{1F60A}\u{1F642}\u{1F44C}\u{1F60E}\u{1F970}\u{1F60D}\u{1F923}\u{1F600}\u{1F601}\u{1F604}\u{263A}\u{1F917}\u{2705}]+$/u;
+
+/** True when the assistant's last message was a wellbeing check ("everything good?"), not "Still out?". */
+function askedWellbeing(input: ClassifyInput): boolean {
+  if (input.state === "OVERTIME") return false;
+  const p = (input.lastPrompt ?? "").toLowerCase();
+  if (/still out|reply \+30|made it there|new spot/.test(p)) return false;
+  return true;
+}
+
+/**
+ * Deterministic answers to a wellbeing check that need no model (spec 9.3 rule pre-pass, extended):
+ * whole-message clear positives become OK, bare negatives and fear emoji become NOT_OK.
+ * Runs after the distress and command rules, so a distress phrase always wins.
+ */
+export function clearReplyRule(input: ClassifyInput): ReplyResult | null {
+  const text = input.text.trim();
+  if (FEAR_EMOJI.test(text)) return result({ label: "NOT_OK", source: "rule", confidence: 0.95 });
+  if (askedWellbeing(input) && isNegative(text)) return result({ label: "NOT_OK", source: "rule", confidence: 0.9 });
+  if (hasDistressLexicon(text)) return null;
+  // A question back ("ok?", "k?") is never a clear positive.
+  if (/\?\s*$/.test(text)) return null;
+  if (POSITIVE_EMOJI_ONLY.test(text)) return result({ label: "OK", source: "rule", confidence: 0.95 });
+  const weak = weakReplyLabel(text);
+  if (weak === "OK") return result({ label: "OK", source: "rule", confidence: 0.95 });
+  return null;
+}
+
 function fallback(text: string): ReplyResult {
   const weak = weakReplyLabel(text);
   return result({ label: weak ?? "AMBIGUOUS", source: "fallback", confidence: weak ? 0.7 : 0 });
@@ -95,6 +124,8 @@ export async function classifyReply(
 ): Promise<ReplyResult> {
   const pre = rulePrePass(input.text);
   if (pre) return pre;
+  const clear = clearReplyRule(input);
+  if (clear) return clear;
   if (!llm) return fallback(input.text);
 
   let out: ReplyClassification;
