@@ -214,8 +214,16 @@ export type UserCommand =
   | { command: "cancel" }
   | { command: "moving"; venueText: string; venueLat: number | null; venueLng: number | null };
 
+/** Plan fields the user can edit after arming (4.4.6). */
+export type PlanEditField = "startAt" | "endAt" | "venue" | "transport" | "type" | "counterpart";
+
 export type EngineEvent =
   | { type: "arm"; guardianAccepted: boolean }
+  /**
+   * Edit after arming (4.4.6, H4). The dialogue has already written the new fields; the engine
+   * reschedules the timers that depend on them.
+   */
+  | { type: "plan_edited"; fields: PlanEditField[] }
   | { type: "guardian_accepted" }
   | { type: "timer"; job: JobKind; payload?: Record<string, unknown> }
   | { type: "fix"; fix: Fix }

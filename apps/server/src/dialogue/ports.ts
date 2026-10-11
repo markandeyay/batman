@@ -68,18 +68,12 @@ export type PlanFieldPatch = Partial<
   >
 >;
 
-export type PlanEditField = "startAt" | "endAt" | "venue" | "transport" | "type" | "counterpart";
+export type { PlanEditField } from "../contracts.js";
 
-/**
- * Edit of an armed plan (spec 4.4.6 "edits after arming"). The engine must reschedule timers for
- * changed times and re-geofence a changed venue. Proposed for contracts.ts EngineEvent.
- */
-export interface PlanEditedEvent {
-  type: "plan_edited";
-  fields: PlanEditField[];
-}
+/** Edit of an armed plan (spec 4.4.6). Now a contracts.ts EngineEvent handled by the engine (H4). */
+export type PlanEditedEvent = Extract<EngineEvent, { type: "plan_edited" }>;
 
-export type DialogueEvent = EngineEvent | PlanEditedEvent;
+export type DialogueEvent = EngineEvent;
 
 /** Per-user conversational context, persisted (resumable, spec 4.2). JSON-serializable. */
 export interface DialogueState {

@@ -21,14 +21,13 @@ import type {
 import { DISCREET_STATES } from "../../apps/server/src/contracts.js";
 import { handleInbound } from "../../apps/server/src/dialogue/manager.js";
 import { handleOptinExpire } from "../../apps/server/src/dialogue/guardian.js";
-import type { DialogueEvent, DialoguePorts, PlanEditField } from "../../apps/server/src/dialogue/ports.js";
+import type { DialogueEvent, DialoguePorts } from "../../apps/server/src/dialogue/ports.js";
 import type { Geocoder, GeocodeResult } from "../../apps/server/src/geo/geocode.js";
 import { guardedFixHandler } from "../../apps/server/src/location/source.js";
 import { loadTrack, materializeTrack, type MaterializedTrack } from "../../apps/server/src/location/replay.js";
 import { FakeLlmProvider, type LlmProvider } from "../../apps/server/src/nlu/llm.js";
 import { renderTemplate, type TemplateParams } from "../../apps/server/src/notify/templates.js";
 import { PlanRuntime, type OutboundPort, type SendEffect } from "../../apps/server/src/plan/runtime.js";
-import { T_MINUS_MS } from "../../apps/server/src/plan/stateMachine.js";
 import type { EnginePlan } from "../../apps/server/src/plan/types.js";
 import { JobScheduler } from "../../apps/server/src/scheduler/jobs.js";
 import { openStore, type Store } from "../../apps/server/src/store/db.js";
@@ -490,39 +489,11 @@ export class FullStack {
   /** GLUE: DialoguePorts.dispatch -> PlanRuntime.dispatch. */
   async dispatch(planId: string, event: DialogueEvent): Promise<void> {
     try {
-      if (event.type === "plan_edited") {
-        await this.applyPlanEdited(planId, event.fields);
-        return;
-      }
       const plan = repo.getPlan(this.store, planId);
       const last = plan ? this.lastInbound.get(plan.userId) : undefined;
       await this.runtime.dispatch(planId, event, last ? { lastUserMessageId: last } : {});
     } catch (err) {
       this.errors.push(err);
-    }
-  }
-
-  /**
-   * GLUE: plan_edited is not an engine event. The dialogue already wrote the new fields; here
-   * the timers that depend on them are rescheduled with the same math as the engine's armPlan
-   * and scheduleEndGrace. Recommended fix: a plan_edited row in the engine.
-   */
-  private async applyPlanEdited(planId: string, fields: PlanEditField[]): Promise<void> {
-    const p = repo.getPlan(this.store, planId);
-    if (!p) return;
-    repo.addPlanEvent(this.store, planId, "plan_edited", { fields }, this.clock.now());
-    const now = this.clock.now().getTime();
-    if (fields.includes("startAt") && p.startAt && (p.state === "ARMED" || p.state === "PRE_MEETUP")) {
-      const start = p.startAt.getTime();
-      if (p.state === "ARMED") {
-        this.scheduler.cancel(planId, ["t_minus_30", "start"]);
-        this.scheduler.enqueue({ kind: "t_minus_30", runAt: new Date(Math.max(now, start - T_MINUS_MS)), planId });
-      } else this.scheduler.cancel(planId, ["start"]);
-      this.scheduler.enqueue({ kind: "start", runAt: new Date(Math.max(now, start)), planId });
-    }
-    if (p.state === "AWAITING_GUARDIAN" && fields.includes("endAt") && p.endAt) {
-      this.scheduler.cancel(planId, ["draft_expire"]);
-      this.scheduler.enqueue({ kind: "draft_expire", runAt: p.endAt, planId });
     }
   }
 

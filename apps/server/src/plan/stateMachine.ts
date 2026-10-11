@@ -251,8 +251,8 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     run: (tx) => {
       tx.setState("AWAITING_GUARDIAN");
       tx.send("user", "plan_awaiting_guardian", planParams(tx.p));
-      // A plan that never gets a guardian expires once its window has passed (EXPIRED, 6.1).
-      tx.schedule("draft_expire", tx.p.endAt ?? tx.at(DRAFT_TTL_MS));
+      // X4: a plan that never gets a guardian expires at its start (EXPIRED, 6.1) and says so.
+      tx.schedule("draft_expire", awaitingExpiryAt(tx));
     },
   }),
   row({
@@ -271,6 +271,41 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     run: (tx) => {
       armPlan(tx);
       tx.send("user", "plan_armed_now", planParams(tx.p));
+    },
+  }),
+  row({
+    id: "plan-edited-armed",
+    spec: "H4 / 4.4.6 edit after arming: reschedule T-30, start, reconfirm; straight to PRE_MEETUP or ACTIVE when near or past",
+    from: ["ARMED"],
+    on: "plan_edited",
+    run: (tx, e) => onPlanEditedBeforeStart(tx, e.fields),
+  }),
+  row({
+    id: "plan-edited-premeetup",
+    spec: "H4: edit in PRE_MEETUP: back to ARMED when the start moved out past T-30, else reschedule start",
+    from: ["PRE_MEETUP"],
+    on: "plan_edited",
+    run: (tx, e) => onPlanEditedBeforeStart(tx, e.fields),
+  }),
+  row({
+    id: "plan-edited-awaiting",
+    spec: "H4 / X4: edit while awaiting the guardian moves the expiry to the new start",
+    from: ["AWAITING_GUARDIAN"],
+    on: "plan_edited",
+    run: (tx, e) => {
+      tx.cancel(["draft_expire"]);
+      tx.schedule("draft_expire", awaitingExpiryAt(tx));
+      tx.audit("plan_edited", { fields: e.fields });
+    },
+  }),
+  row({
+    id: "plan-edited-live",
+    spec: "H4: edit during the meetup: end-related jobs follow the new end",
+    from: ["ACTIVE", "OVERTIME", "CHECKING", "ESCALATED", "CLOSING"],
+    on: "plan_edited",
+    run: (tx, e) => {
+      if ((e.fields.includes("endAt") || e.fields.includes("startAt")) && tx.p.state !== "CLOSING") scheduleEndGrace(tx);
+      tx.audit("plan_edited", { fields: e.fields });
     },
   }),
   row({
@@ -634,8 +669,12 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     when: (p, _e, ctx) =>
       p.state === "DRAFT"
         ? ctx.now.getTime() >= p.createdAt.getTime() + DRAFT_TTL_MS
-        : ctx.now.getTime() >= (p.endAt?.getTime() ?? p.createdAt.getTime() + DRAFT_TTL_MS),
-    run: (tx) => closePlan(tx, "EXPIRED", "expired"),
+        : ctx.now.getTime() >= (p.startAt?.getTime() ?? p.endAt?.getTime() ?? p.createdAt.getTime() + DRAFT_TTL_MS),
+    run: (tx) => {
+      // X4: tell the user once that the unarmed plan expired (a DRAFT expires quietly).
+      if (tx.p.state === "AWAITING_GUARDIAN") tx.send("user", "plan_expired_unarmed", planParams(tx.p));
+      closePlan(tx, "EXPIRED", "expired");
+    },
   }),
 
   // ----- 5.3 / 5.4 guardian -----
@@ -766,6 +805,47 @@ function armPlan(tx: Tx): void {
   tx.schedule("t_minus_30", new Date(Math.max(now, start - T_MINUS_MS)));
   tx.schedule("start", new Date(Math.max(now, start)));
   if (start - now > RECONFIRM_THRESHOLD_MS) tx.schedule("reconfirm", new Date(start - RECONFIRM_BEFORE_MS));
+}
+
+/** X4: an AWAITING_GUARDIAN plan expires at its start (or end, or 12 h for an undated plan). */
+function awaitingExpiryAt(tx: Tx): Date {
+  const p = tx.p;
+  const t = p.startAt ?? p.endAt;
+  return t ? new Date(Math.max(tx.now.getTime(), t.getTime())) : tx.at(DRAFT_TTL_MS);
+}
+
+/**
+ * H4: the start (or end) of an armed plan changed. Reschedule like armPlan, and move straight to
+ * PRE_MEETUP or ACTIVE when the new start is within 30 min or past. PRE_MEETUP whose start moved
+ * out past T-30 goes back to ARMED and stops the location request (I3).
+ */
+function onPlanEditedBeforeStart(tx: Tx, fields: readonly string[]): void {
+  const p = tx.p;
+  tx.audit("plan_edited", { fields: [...fields] });
+  if (!p.startAt) return;
+  const now = tx.now.getTime();
+  const start = p.startAt.getTime();
+  tx.cancel(["t_minus_30", "start", "reconfirm"]);
+  if (start - T_MINUS_MS > now) {
+    if (p.state === "PRE_MEETUP") {
+      tx.cancel(["loc_poll", "loc_reminder"]);
+      tx.emit({ kind: "stop_watch" });
+      p.locRequestedAt = null;
+      p.shareConfirmedAt = null;
+      p.flags.locReminderSent = false;
+    }
+    armPlan(tx);
+    return;
+  }
+  if (p.state === "ARMED" && start > now) {
+    tx.setState("PRE_MEETUP");
+    requestLocation(tx);
+  }
+  if (start <= now) {
+    startActive(tx);
+    return;
+  }
+  tx.schedule("start", p.startAt);
 }
 
 function requestLocation(tx: Tx): void {

@@ -269,7 +269,9 @@ describe("15.3 full stack scenarios", () => {
     expect(s.sent.at(-1)!.text).toContain("Priya hasn't said yes to being your backup yet, so I can't lock this in until they do.");
     await s.runUntil(200);
     expect(s.transitions()).toEqual(["DRAFT->AWAITING_GUARDIAN", "AWAITING_GUARDIAN->EXPIRED"]);
-    expect(s.sends(-239)).toEqual([]); // no location request, no arrival, no ladder
+    // No location request, no arrival, no ladder; X4: one line at the start saying it expired.
+    expect(s.sends(-239)).toEqual(["user:plan_expired_unarmed"]);
+    expect(s.sent.at(-1)!.t).toBe(0);
     // I1: the guardian never texted Batman, so Batman never texted them.
     expect(s.guardianSends()).toEqual([]);
   });

@@ -84,7 +84,7 @@ describe("6.2 DRAFT and arming (I1)", () => {
     expect(r.row).toBe("draft-go-awaiting");
     expect(r.plan.state).toBe("AWAITING_GUARDIAN");
     expect(sends(r.fx)).toEqual(["user:plan_awaiting_guardian"]);
-    expect(sched(r.fx, "draft_expire")[0]!.runAt).toEqual(at(120));
+    expect(sched(r.fx, "draft_expire")[0]!.runAt).toEqual(at(0)); // X4: expires at the start
   });
 
   it("I1: arming needs the link to be accepted in the store too, not just the event", () => {
@@ -117,7 +117,7 @@ describe("6.2 DRAFT and arming (I1)", () => {
     expect(sends(r.fx)).toEqual(["user:plan_time_confirm_ask"]);
   });
 
-  it("draft expires after 12 h; AWAITING_GUARDIAN expires when the window passes", () => {
+  it("draft expires after 12 h; AWAITING_GUARDIAN expires at the start and says so once (X4)", () => {
     const p = basePlan({ createdAt: at(-240) });
     expect(apply(p, timer("draft_expire"), ctxAt(at(-240 + 11 * 60))).plan.state).toBe("DRAFT");
     const r = apply(p, timer("draft_expire"), ctxAt(at(-240 + 12 * 60)));
@@ -126,8 +126,18 @@ describe("6.2 DRAFT and arming (I1)", () => {
     expect(sends(r.fx)).toEqual([]);
     expect(sched(r.fx, "purge")).toHaveLength(1);
     const aw = basePlan({ state: "AWAITING_GUARDIAN" });
-    expect(apply(aw, timer("draft_expire"), ctxAt(at(119))).plan.state).toBe("AWAITING_GUARDIAN");
-    expect(apply(aw, timer("draft_expire"), ctxAt(at(120))).plan.state).toBe("EXPIRED");
+    expect(apply(aw, timer("draft_expire"), ctxAt(at(-1))).plan.state).toBe("AWAITING_GUARDIAN");
+    const ex = apply(aw, timer("draft_expire"), ctxAt(at(0)));
+    expect(ex.plan.state).toBe("EXPIRED");
+    expect(sends(ex.fx)).toEqual(["user:plan_expired_unarmed"]);
+  });
+
+  it("plan_edited is handled in ARMED, PRE_MEETUP, AWAITING_GUARDIAN, and live states (H4)", () => {
+    const ev = { type: "plan_edited" as const, fields: ["startAt" as const] };
+    expect(apply(basePlan({ state: "ARMED" }), ev, ctxAt(at(-240))).row).toBe("plan-edited-armed");
+    expect(apply(basePlan({ state: "PRE_MEETUP" }), ev, ctxAt(at(-20))).row).toBe("plan-edited-premeetup");
+    expect(apply(basePlan({ state: "AWAITING_GUARDIAN" }), ev, ctxAt(at(-240))).row).toBe("plan-edited-awaiting");
+    expect(apply(basePlan({ state: "ACTIVE" }), { type: "plan_edited", fields: ["endAt"] }, ctxAt(at(30))).row).toBe("plan-edited-live");
   });
 });
 
