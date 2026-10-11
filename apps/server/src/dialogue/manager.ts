@@ -30,6 +30,9 @@ function inWindow(plan: Plan | null): plan is Plan {
   return plan !== null && WINDOW_STATES.includes(plan.state);
 }
 
+/** States before the meetup starts, where "done" asks to cancel (M7). */
+const BEFORE_START: readonly Plan["state"][] = ["ARMED", "PRE_MEETUP", "AWAITING_GUARDIAN"];
+
 function isOpen(plan: Plan | null): plan is Plan {
   return plan !== null && !TERMINAL_STATES.includes(plan.state);
 }
@@ -256,6 +259,19 @@ async function handleUserText(ports: DialoguePorts, user: User, plan: Plan | nul
     }
   }
 
+  // M7: confirmation for "done" before the meetup starts.
+  if (p?.kind === "cancel_confirm") {
+    await ports.repo.setDialogueState(user.id, { ...ds, pending: null });
+    if (plan && plan.id === p.planId && isOpen(plan) && isAffirmative(text)) {
+      await ports.dispatch(plan.id, { type: "user_command", command: "cancel" });
+      return "cmd_cancel";
+    }
+    if (isNegative(text)) {
+      await sendTemplate(ports, to, "replace_kept", {}, ctx);
+      return "cancel_kept";
+    }
+  }
+
   // H1: a model-suggested venue change waits for the user's yes (only while ACTIVE).
   if (p?.kind === "moving_confirm") {
     await ports.repo.setDialogueState(user.id, { ...ds, pending: null });
@@ -359,6 +375,12 @@ async function handleRule(
     case "home":
     case "done":
     case "moving":
+      if (rule.kind === "done" && plan && BEFORE_START.includes(plan.state)) {
+        // M7: "done" before the meetup starts most likely means "call it off". Ask first.
+        await ports.repo.setDialogueState(user.id, { ...ds, pending: { kind: "cancel_confirm", planId: plan.id } });
+        await sendTemplate(ports, to, "plan_cancel_confirm_ask", { plan, tz }, ctx);
+        return "cancel_confirm_ask";
+      }
       if (!inWindow(plan)) return null; // outside a window these are intake text
       return dispatchCommand(
         ports,

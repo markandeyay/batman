@@ -335,6 +335,8 @@ const GUARDIAN_INVALID_REASONS: Record<string, string> = {
   unreachable: "I can't reach that number right now. Want to try someone else?",
 };
 
+const DISCREET: readonly PlanState[] = ["ACTIVE", "OVERTIME", "CHECKING", "ESCALATED", "CLOSING"];
+
 const STATE_LINES: Partial<Record<PlanState, (c: Ctx) => string>> = {
   DRAFT: () => "Still setting this one up.",
   AWAITING_GUARDIAN: (c) => `Waiting on ${c.guardian} to say yes.`,
@@ -414,7 +416,12 @@ const T: Record<TemplateId, Variant[]> = {
   usr_guardian_in: [(c) => `${c.guardianCap}'s in. 👍`],
   usr_guardian_declined: [(c) => `${c.guardianCap} declined, want to add someone else?`],
   usr_guardian_expired: [(c) => `${c.guardianCap} hasn't answered in 48 hours. Want to add someone else as your backup?`],
-  usr_guardian_stopped: [(c) => `${c.guardianCap} opted out of being your backup. Want to add someone else?`],
+  usr_guardian_stopped: [
+    (c) =>
+      c.p.state && DISCREET.includes(c.p.state)
+        ? `Heads up, ${clean(c.p.guardianName) ?? "they"} can't anymore. Want to add someone else? Send their name and number.`
+        : `${c.guardianCap} opted out of being your backup. Want to add someone else?`,
+  ],
 
   // ---------- intake and arming (4.4) ----------
   plan_confirm: [

@@ -51,6 +51,8 @@ export interface PlanRuntimeOptions {
   lastUserMessageId?: (plan: EnginePlan) => string | null;
   /** Override night detection (tests). */
   night?: boolean;
+  /** Audit events that must be logged at critical level (M7: escalation with no reachable guardian). */
+  onCritical?: (event: string, info: { planId: string; data?: Record<string, unknown> }) => void;
   /** Hard real-time bound on one call placement (H5). Default 60 s. A timeout counts as not placed. */
   callTimeoutMs?: number;
   onError?: (err: unknown, info: { planId: string; event?: string; effect?: string }) => void;
@@ -59,6 +61,9 @@ export interface PlanRuntimeOptions {
 const SHARE_JOBS: readonly JobKind[] = ["loc_poll", "t_minus_30"];
 
 export const CALL_TIMEOUT_MS = 60_000;
+
+/** Engine audit events that the runtime reports through onCritical (M7, X3). */
+export const CRITICAL_AUDITS: readonly string[] = ["escalation_no_guardian", "escalation_guardian_lost", "fallback_guardian_alert"];
 
 export class PlanRuntime {
   private readonly queues = new Map<string, Promise<unknown>>();
@@ -172,6 +177,7 @@ export class PlanRuntime {
         break;
       case "audit":
         repo.addPlanEvent(this.o.store, planId, e.event, e.data, now);
+        if (CRITICAL_AUDITS.includes(e.event)) this.o.onCritical?.(e.event, e.data ? { planId, data: e.data } : { planId });
         break;
       case "purge_location":
         repo.purgePlanLocation(this.o.store, planId);

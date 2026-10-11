@@ -234,6 +234,7 @@ export function createApp(env: Env, deps: AppDeps = {}): App {
       return probeShare(api, user.addressE164);
     },
     onError: (err, info) => logger.warn({ ...info, error: describeError(err) }, "plan runtime error"),
+    onCritical: (event, info) => logger.error({ critical: true, event, ...info }, "CRITICAL plan event"),
   });
   executor.bind({ ingestFix: (id, fix) => runtime.ingestFix(id, fix), dispatch: (id, e) => runtime.dispatch(id, e) });
 

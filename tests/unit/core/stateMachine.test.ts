@@ -628,7 +628,8 @@ describe("6.7 alert word and 4.6 distress", () => {
     const ctx = ctxAt(at(60), { guardian: { displayName: "Priya", linkStatus: "revoked", stopped: true } });
     const r = apply(active(), { type: "alert_word", messageId: "u-1" }, ctx);
     expect(r.plan.state).toBe("ESCALATED");
-    expect(sends(r.fx)).toEqual(["user:cw_alert_reply"]);
+    // X3: the user is told once, discreetly, that the backup could not be reached.
+    expect(sends(r.fx)).toEqual(["user:cw_alert_reply", "user:usr_backup_unreachable"]);
     expect(r.fx.some((e) => e.kind === "call")).toBe(false);
   });
 });

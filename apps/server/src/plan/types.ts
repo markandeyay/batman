@@ -17,6 +17,10 @@ export interface PlanFlags {
   lateReplySent: boolean;
   /** Mid-meetup check already scheduled or sent (4.6). */
   midCheckSent: boolean;
+  /** X3: usr_backup_unreachable sent (once per plan). */
+  backupUnreachableSent: boolean;
+  /** X3: the plain explanation is owed once the window is over. */
+  backupUnreachableExplainPending: boolean;
 }
 
 /** A stay at a new spot awaiting the user's answer to "New spot?" (T-VENUE-CHG, 7.3). */
@@ -66,6 +70,8 @@ export const DEFAULT_FLAGS: PlanFlags = {
   clarifySent: false,
   lateReplySent: false,
   midCheckSent: false,
+  backupUnreachableSent: false,
+  backupUnreachableExplainPending: false,
 };
 
 /** What the engine knows about the guardian link at event time. */

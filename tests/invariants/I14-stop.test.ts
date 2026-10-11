@@ -52,7 +52,17 @@ describe("I14 stop", () => {
     expect(h.dispatched).toContainEqual({ planId: plan.id, event: { type: "user_command", command: "cancel" } });
   });
 
-  it.each(WINDOW_STATES.map((s) => [s]))("done is passed to the engine in %s", async (state) => {
+  it("done in PRE_MEETUP asks once, then YES ends the plan (M7)", async () => {
+    const h = makeHarness();
+    const { user, guardianId } = await seedUser(h);
+    const plan = await seedPlan(h, user.id, guardianId, "PRE_MEETUP");
+    await h.text(USER, "done");
+    expect(h.sentTo(USER).at(-1)?.template).toBe("plan_cancel_confirm_ask");
+    await h.text(USER, "yes");
+    expect(h.dispatched).toContainEqual({ planId: plan.id, event: { type: "user_command", command: "cancel" } });
+  });
+
+  it.each(WINDOW_STATES.filter((s) => s !== "PRE_MEETUP").map((s) => [s]))("done is passed to the engine in %s", async (state) => {
     const h = makeHarness();
     const { user, guardianId } = await seedUser(h);
     const plan = await seedPlan(h, user.id, guardianId, state);

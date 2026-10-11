@@ -87,6 +87,8 @@ export interface DialogueState {
     | { kind: "codewords" }
     | { kind: "caller" }
     | { kind: "questions"; planId: string }
+    /** M7: "done" before the meetup starts; YES cancels. */
+    | { kind: "cancel_confirm"; planId: string }
     /** H1: the model thought the user is moving; confirm before changing the venue. */
     | { kind: "moving_confirm"; planId: string; venueText: string }
     | null;

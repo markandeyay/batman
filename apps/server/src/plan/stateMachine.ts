@@ -761,8 +761,9 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     on: "guardian_stop",
     run: (tx) => {
       tx.cancel(GUARDIAN_JOBS);
-      tx.send("user", "usr_guardian_stopped");
-      tx.audit("guardian_stopped");
+      // M7: the dialogue asks for a replacement; the copy is discreet inside a window (I10).
+      tx.send("user", "usr_guardian_stopped", { state: tx.p.state });
+      tx.audit(tx.p.state === "ESCALATED" ? "escalation_guardian_lost" : "guardian_stopped");
     },
   }),
 
@@ -1166,7 +1167,14 @@ function escalate(tx: Tx, reason: EscalationReason): void {
   tx.cancel([...LADDER_JOBS, "venue_change_timeout", "mid_check", "end_grace", "risk_tick", "post_exit"]);
   bumpEscalation(tx);
   if (!canMessageGuardian(p, tx.ctx)) {
+    // M7: logged at critical level by the runtime (CRITICAL_AUDITS). X3: tell the user once with
+    // discreet copy (I10); the plain explanation waits until the window is over (closePlan).
     tx.audit("escalation_no_guardian", { reason: reason.kind });
+    if (!p.flags.backupUnreachableSent) {
+      p.flags.backupUnreachableSent = true;
+      p.flags.backupUnreachableExplainPending = true;
+      tx.send("user", "usr_backup_unreachable", {}, { notifyAnyway: true });
+    }
     return;
   }
   tx.send("guardian", "gdn_alert", alertParams(tx), { notifyAnyway: true, critical: true });
@@ -1494,6 +1502,11 @@ function closePlan(tx: Tx, to: "CLOSED" | "CANCELLED" | "EXPIRED", reason: Close
   tx.setState(to);
   p.closedAt = tx.now;
   if (guardianNeedsAllClear) tx.send("guardian", "gdn_all_clear", { closeReason: reason });
+  if (p.flags.backupUnreachableExplainPending) {
+    // X3: outside the window now, so the plain-language explanation is allowed (I10).
+    p.flags.backupUnreachableExplainPending = false;
+    tx.send("user", "usr_backup_unreachable_explain");
+  }
   if (wasInWindow) tx.emit({ kind: "stop_watch" });
   tx.schedule("purge", tx.at(PURGE_AFTER_MS));
 }

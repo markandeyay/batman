@@ -302,8 +302,9 @@ describe("15.3 full stack scenarios", () => {
       "145 send user:lad_l1",
       "150 send user:lad_l2_text",
       "150 call user:checkin",
+      "153 send user:usr_backup_unreachable", // X3: discreet, once
     ]);
-    expect(s.sent.find((m) => m.template === "usr_guardian_stopped")!.text).toBe("Priya opted out of being your backup. Want to add someone else?");
+    expect(s.sent.find((m) => m.template === "usr_guardian_stopped")!.text).toBe("Heads up, Priya can't anymore. Want to add someone else? Send their name and number."); // discreet: the plan is ACTIVE (I10)
     // The ladder still reaches L3, but nothing goes to the stopped guardian.
     expect(s.plan()!.state).toBe("ESCALATED");
     expect(s.sends(31, "guardian")).toEqual([]);
