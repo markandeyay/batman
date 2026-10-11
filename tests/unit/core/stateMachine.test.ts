@@ -393,8 +393,8 @@ describe("6.2 / 4.7 overtime and ladder steps (6.4)", () => {
     const r = apply(checking("L2"), timer("ladder", { step: "L3", token: at(30).toISOString() }), ctxAt(at(42), { fixes: [fixFromVenue(at(40), 500)] }));
     expect(r.plan.state).toBe("ESCALATED");
     expect(r.plan.escalationReason).toEqual({ kind: "no_reply", trigger: "T-DEP-WALK", minutesSilent: 12 });
-    expect(kinds(r.fx)).toEqual(["cancel_jobs", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
-    const alert = r.fx[1] as Extract<Effect, { kind: "send" }>;
+    expect(kinds(r.fx)).toEqual(["cancel_jobs", "cancel_jobs", "schedule", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
+    const alert = r.fx.find((e) => e.kind === "send" && e.template === "gdn_alert") as Extract<Effect, { kind: "send" }>;
     expect(alert).toMatchObject({ critical: true, notifyAnyway: true });
     expect(alert.params).toMatchObject({ reason: { kind: "no_reply" }, minutesSilent: 12, fix: { at: at(40) }, now: at(42), userName: "Alex" }); // fix 2 min old
     expect(sched(r.fx, "guardian_repeat")[0]!.runAt).toEqual(at(45));
@@ -453,7 +453,7 @@ describe("6.5 replies during CHECKING / OVERTIME", () => {
     const r = apply(checking("L1"), { type: "user_reply", label: "NOT_OK", messageId: "u-9" }, ctxAt(at(36)));
     expect(r.plan.state).toBe("ESCALATED");
     expect(r.plan.escalationReason).toEqual({ kind: "not_ok_reply" });
-    expect(kinds(r.fx)).toEqual(["send:user:act_calling_you_now", "call:user:fake", "cancel_jobs", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
+    expect(kinds(r.fx)).toEqual(["send:user:act_calling_you_now", "call:user:fake", "cancel_jobs", "cancel_jobs", "schedule", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
   });
 
   it("AMBIGUOUS -> one clarifying line, timer not restarted", () => {
@@ -606,8 +606,8 @@ describe("6.7 alert word and 4.6 distress", () => {
       expect(r.row).toBe("alert-word");
       expect(r.plan.state).toBe("ESCALATED");
       expect(r.plan.escalationReason).toEqual({ kind: "alert_word" });
-      expect(kinds(r.fx)).toEqual(["send:user:cw_alert_reply", "cancel_jobs", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
-      expect(r.fx[2]).toMatchObject({ critical: true, notifyAnyway: true, params: { reason: { kind: "alert_word" } } });
+      expect(kinds(r.fx)).toEqual(["send:user:cw_alert_reply", "cancel_jobs", "cancel_jobs", "schedule", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
+      expect(r.fx.find((e) => e.kind === "send" && e.template === "gdn_alert")).toMatchObject({ critical: true, notifyAnyway: true, params: { reason: { kind: "alert_word" } } });
     }
   });
 
@@ -621,7 +621,7 @@ describe("6.7 alert word and 4.6 distress", () => {
   it("distress -> ESCALATED + Calling you now + fake call + guardian alert", () => {
     const r = apply(active(), { type: "distress", messageId: "u-1" }, ctxAt(at(60)));
     expect(r.row).toBe("distress");
-    expect(kinds(r.fx)).toEqual(["send:user:act_calling_you_now", "call:user:fake", "cancel_jobs", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
+    expect(kinds(r.fx)).toEqual(["send:user:act_calling_you_now", "call:user:fake", "cancel_jobs", "cancel_jobs", "schedule", "send:guardian:gdn_alert", "call:guardian:guardian_alert", "schedule"]);
   });
 
   it("no guardian reachable: escalation is recorded, nothing is sent to them", () => {
@@ -746,7 +746,20 @@ describe("5.3 / 5.4 guardian", () => {
     const r = apply(escalated(), { type: "guardian_ack" }, ctxAt(at(44)));
     expect(r.row).toBe("guardian-ack");
     expect(r.plan.guardianAckAt).toEqual(at(44));
-    expect(r.fx).toEqual([{ kind: "cancel_jobs", kinds: ["guardian_repeat"] }, expect.objectContaining({ kind: "schedule", job: expect.objectContaining({ kind: "guardian_update", runAt: at(49) }) })]);
+    expect(r.fx).toEqual([
+      { kind: "cancel_jobs", kinds: ["guardian_repeat"] },
+      // M1: GOT IT restarts the 2 h escalation end timer.
+      { kind: "cancel_jobs", kinds: ["escalation_end"] },
+      expect.objectContaining({ kind: "schedule", job: expect.objectContaining({ kind: "escalation_end", runAt: at(44 + 120) }) }),
+      expect.objectContaining({ kind: "schedule", job: expect.objectContaining({ kind: "guardian_update", runAt: at(49) }) }),
+    ]);
+  });
+
+  it("escalation_end closes a quiet escalation (M1)", () => {
+    const p = escalated({ escalationActivityAt: at(44) });
+    const r = apply(p, timer("escalation_end", { at: at(44).toISOString() }), ctxAt(at(164)));
+    expect(r.row).toBe("escalation-end");
+    expect(r.plan.state).toBe("CLOSED");
     expect(apply(escalated({ guardianAckAt: at(44) }), timer("guardian_repeat"), ctxAt(at(46))).row).toBeNull();
   });
 

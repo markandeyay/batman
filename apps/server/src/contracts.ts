@@ -196,7 +196,8 @@ export type JobKind =
   | "purge" // 24 h after close (I12)
   | "draft_expire" // 12 h
   | "optin_expire" // guardian opt-in 48 h
-  | "reconfirm"; // day-before reconfirm for plans > 7 days out
+  | "reconfirm" // day-before reconfirm for plans > 7 days out
+  | "escalation_end"; // M1: 2 h after the last guardian-facing activity, close an escalation
 
 export interface JobSpec {
   kind: JobKind;

@@ -62,6 +62,8 @@ export const GUARDIAN_UPDATE_MS = 5 * MIN_MS;
 export const GUARDIAN_UPDATE_MIN_MOVE_M = 150;
 export const GUARDIAN_UPDATE_WINDOW_MS = 120 * MIN_MS;
 export const CLOSING_TIMEOUT_MS = 90 * MIN_MS;
+/** M1: an escalation closes 2 h after the last guardian-facing activity (alert, repeat, update, GOT IT). */
+export const ESCALATION_END_MS = 120 * MIN_MS;
 export const PURGE_AFTER_MS = 24 * 60 * MIN_MS;
 export const DRAFT_TTL_MS = 12 * 60 * MIN_MS;
 export const RECONFIRM_THRESHOLD_MS = 7 * 24 * 60 * MIN_MS;
@@ -686,6 +688,7 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     when: (p) => p.guardianAckAt === null && p.guardianRepeatCount < GUARDIAN_REPEAT_MAX,
     run: (tx) => {
       tx.p.guardianRepeatCount += 1;
+      bumpEscalation(tx);
       tx.send("guardian", "gdn_alert_repeat", alertParams(tx), { notifyAnyway: true, critical: true });
       if (tx.p.guardianRepeatCount < GUARDIAN_REPEAT_MAX) tx.schedule("guardian_repeat", tx.at(GUARDIAN_REPEAT_MS));
     },
@@ -699,6 +702,7 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     run: (tx) => {
       tx.p.guardianAckAt = tx.now;
       tx.cancel(["guardian_repeat"]);
+      bumpEscalation(tx);
       tx.schedule("guardian_update", tx.at(GUARDIAN_UPDATE_MS));
       tx.audit("guardian_ack");
     },
@@ -718,7 +722,16 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     on: "guardian_location_request",
     run: (tx) => {
       tx.send("guardian", "gdn_location_update", alertParams(tx));
+      bumpEscalation(tx);
     },
+  }),
+  row({
+    id: "escalation-end",
+    spec: "M1 (I3, I12): 2 h with no guardian-facing activity: stop watching, close, tell the guardian honestly, purge in 24 h",
+    from: ["ESCALATED"],
+    on: "timer:escalation_end",
+    when: (p, e) => !!p.escalationActivityAt && payloadStr(e, "at") === p.escalationActivityAt.toISOString(),
+    run: (tx) => closePlan(tx, "CLOSED", "escalation_timeout"),
   }),
   row({
     id: "guardian-location-denied",
@@ -1131,6 +1144,7 @@ function escalate(tx: Tx, reason: EscalationReason): void {
     if (p.escalationReason?.kind !== reason.kind && (reason.kind === "alert_word" || reason.kind === "distress")) {
       p.escalationReason = reason;
       tx.send("guardian", "gdn_alert", alertParams(tx), { notifyAnyway: true, critical: true });
+      bumpEscalation(tx);
     }
     tx.audit("escalation_reason", { reason: reason.kind });
     return;
@@ -1150,6 +1164,7 @@ function escalate(tx: Tx, reason: EscalationReason): void {
   p.guardianRepeatCount = 0;
   p.pendingSpot = null;
   tx.cancel([...LADDER_JOBS, "venue_change_timeout", "mid_check", "end_grace", "risk_tick", "post_exit"]);
+  bumpEscalation(tx);
   if (!canMessageGuardian(p, tx.ctx)) {
     tx.audit("escalation_no_guardian", { reason: reason.kind });
     return;
@@ -1158,6 +1173,14 @@ function escalate(tx: Tx, reason: EscalationReason): void {
   tx.call("guardian", "guardian_alert");
   tx.schedule("guardian_repeat", tx.at(GUARDIAN_REPEAT_MS));
   tx.audit("escalated", { reason: reason.kind });
+}
+
+/** M1: guardian-facing activity during an escalation restarts the 2 h end timer. */
+function bumpEscalation(tx: Tx): void {
+  const p = tx.p;
+  p.escalationActivityAt = tx.now;
+  tx.cancel(["escalation_end"]);
+  tx.schedule("escalation_end", tx.at(ESCALATION_END_MS), { at: tx.now.toISOString() });
 }
 
 function alertParams(tx: Tx): TemplateParams {
@@ -1449,6 +1472,7 @@ function onGuardianUpdate(tx: Tx): void {
       p.lastGuardianUpdateLat = f.lat;
       p.lastGuardianUpdateLng = f.lng;
       tx.send("guardian", "gdn_location_update", alertParams(tx));
+      bumpEscalation(tx);
     }
   }
   if (tx.now.getTime() + GUARDIAN_UPDATE_MS < end) tx.schedule("guardian_update", tx.at(GUARDIAN_UPDATE_MS));
