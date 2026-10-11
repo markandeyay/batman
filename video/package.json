@@ -1,0 +1,23 @@
+{
+  "name": "batman-video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "still": "remotion still src/index.ts",
+    "render": "remotion render src/index.ts BatmanVideo out/batman-demo.mp4 --codec h264 --crf 18",
+    "durations": "node scripts/durations.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.525",
+    "@remotion/google-fonts": "4.0.525",
+    "@remotion/media-utils": "4.0.525",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.525"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "typescript": "6.0.3"
+  }
+}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Batman"><g transform="translate(0 -5)">
+  <g fill="#3A3191" stroke="#3A3191" stroke-linejoin="round"><path d="M56 136 C50 100 56 62 72 36 C90 52 106 72 116 94 L100 136 Z" stroke-width="12"/><g transform="translate(256 0) scale(-1 1)"><path d="M56 136 C50 100 56 62 72 36 C90 52 106 72 116 94 L100 136 Z" stroke-width="12"/></g><path d="M62 128 C46 114 30 108 14 108 C18 124 18 136 16 150 Q36 140 58 154 Z" stroke-width="8"/><g transform="translate(256 0) scale(-1 1)"><path d="M62 128 C46 114 30 108 14 108 C18 124 18 136 16 150 Q36 140 58 154 Z" stroke-width="8"/></g></g>
+  <rect x="46" y="88" width="164" height="118" rx="59" fill="#3A3191"/>
+  <path d="M82 192 C80 212 70 224 52 232 C80 234 104 224 120 206 Z" fill="#3A3191"/>
+  <ellipse cx="107" cy="142" rx="12" ry="16" fill="#FFA47E"/>
+  <ellipse cx="149" cy="142" rx="12" ry="16" fill="#FFA47E"/>
+  <path d="M118 172 Q128 180 138 172" fill="none" stroke="#FFA47E" stroke-width="7" stroke-linecap="round"/></g>
+</svg>

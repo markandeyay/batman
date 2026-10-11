@@ -2,7 +2,7 @@
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/node_modules/**", "**/dist/**", ".tsbuild/**", ".claude/**", "reports/**", "data/**", "logs/**"] },
+  { ignores: ["**/node_modules/**", "**/dist/**", ".tsbuild/**", ".claude/**", "reports/**", "data/**", "logs/**", "video/**"] },
   ...tseslint.configs.recommended,
   {
     rules: {

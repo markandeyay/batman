@@ -1,0 +1,8 @@
+<svg role="img" aria-label="batman" xmlns="http://www.w3.org/2000/svg" width="435" height="108" viewBox="180 22 435 108">
+  <g transform="translate(192 116) scale(0.86)"><g fill="none" stroke="#1C1A33" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M8 -94 V-28"/><circle cx="36" cy="-28" r="28"/>
+  <circle cx="120" cy="-28" r="28"/><path d="M148 -56 V0"/>
+  <path d="M188 -82 V-18 Q188 0 206 0"/><path d="M172 -56 H208"/>
+  <path d="M234 0 V-56 M234 -32 A22 22 0 0 1 278 -32 V0 M278 -32 A22 22 0 0 1 322 -32 V0"/>
+  <circle cx="374" cy="-28" r="28"/><path d="M402 -56 V0"/>
+  <path d="M432 0 V-56 M432 -32 A22 22 0 0 1 476 -32 V0"/></g></g></svg>

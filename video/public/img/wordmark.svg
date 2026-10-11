@@ -1,0 +1,15 @@
+<svg role="img" aria-label="Batman" xmlns="http://www.w3.org/2000/svg" width="620" height="140" viewBox="0 0 620 140">
+  <g transform="translate(0 -12) scale(0.62)">
+  <g fill="#3A3191" stroke="#3A3191" stroke-linejoin="round"><path d="M56 136 C50 100 56 62 72 36 C90 52 106 72 116 94 L100 136 Z" stroke-width="12"/><g transform="translate(256 0) scale(-1 1)"><path d="M56 136 C50 100 56 62 72 36 C90 52 106 72 116 94 L100 136 Z" stroke-width="12"/></g><path d="M62 128 C46 114 30 108 14 108 C18 124 18 136 16 150 Q36 140 58 154 Z" stroke-width="8"/><g transform="translate(256 0) scale(-1 1)"><path d="M62 128 C46 114 30 108 14 108 C18 124 18 136 16 150 Q36 140 58 154 Z" stroke-width="8"/></g></g>
+  <rect x="46" y="88" width="164" height="118" rx="59" fill="#3A3191"/>
+  <path d="M82 192 C80 212 70 224 52 232 C80 234 104 224 120 206 Z" fill="#3A3191"/>
+  <ellipse cx="107" cy="142" rx="12" ry="16" fill="#FFA47E"/>
+  <ellipse cx="149" cy="142" rx="12" ry="16" fill="#FFA47E"/>
+  <path d="M118 172 Q128 180 138 172" fill="none" stroke="#FFA47E" stroke-width="7" stroke-linecap="round"/></g>
+  <g transform="translate(192 116) scale(0.86)"><g fill="none" stroke="#1C1A33" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M8 -94 V-28"/><circle cx="36" cy="-28" r="28"/>
+  <circle cx="120" cy="-28" r="28"/><path d="M148 -56 V0"/>
+  <path d="M188 -82 V-18 Q188 0 206 0"/><path d="M172 -56 H208"/>
+  <path d="M234 0 V-56 M234 -32 A22 22 0 0 1 278 -32 V0 M278 -32 A22 22 0 0 1 322 -32 V0"/>
+  <circle cx="374" cy="-28" r="28"/><path d="M402 -56 V0"/>
+  <path d="M432 0 V-56 M432 -32 A22 22 0 0 1 476 -32 V0"/></g></g></svg>
