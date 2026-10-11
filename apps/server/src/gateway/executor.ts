@@ -25,6 +25,7 @@ import * as repo from "../store/repo.js";
 import type { SendOptions } from "./channel.js";
 import { StoppedRecipientError, describeError, isEmergencyNumber, last4 } from "./errors.js";
 import { dmChatGuid } from "./imessageAdvanced.js";
+import { renderForUser } from "../notify/templates.js";
 
 export type Render = (templateId: TemplateId, params: Record<string, unknown>) => string;
 
@@ -166,7 +167,13 @@ export class GatewayExecutor implements OutboundPort {
       return null;
     }
     const params = stripLocationParams({ ...this.baseParams(plan), ...(effect.params ?? {}) }, effect.to, plan);
-    const text = this.o.render(effect.template, params);
+    // M6 (I10): user copy is checked as rendered; a revealing typed value falls back to the value-free variant.
+    const text = effect.to === "user" ? renderForUser(effect.template, params, plan.state, (id, p) => this.o.render(id, p as Record<string, unknown>)) : this.o.render(effect.template, params);
+    if (text === null) {
+      this.audit(plan.id, "send_blocked_discretion", { template: effect.template });
+      this.log.warn({ planId: plan.id, template: effect.template }, "send blocked: not discreet in this state (I10)");
+      return null;
+    }
     const safety = !!effect.critical || WINDOW_STATES.includes(plan.state);
     try {
       const sent = await this.o.channel.send(r.address, text, {

@@ -15,6 +15,7 @@ import type {
 import { TEMPLATE_IDS } from "../contracts.js";
 import { FALLBACK_TZ, formatClock, formatClockRange, formatDayTime, isValidTz } from "../geo/timezone.js";
 import { formatPhoneForDisplay } from "../util/phone.js";
+import { isDiscreet } from "./discretion.js";
 
 // TemplateParams and CloseReason live in contracts.ts (C1: the one canonical shape the engine
 // emits and these templates read; the engine may not import notify/, I7 guard).
@@ -670,6 +671,35 @@ export function canSendInState(id: TemplateId, state: PlanState | null): boolean
     return DISCREET_TEMPLATES.includes(id);
   }
   return true;
+}
+
+/** Param keys that carry text the user (or a geocoder) supplied; dropped for the value-free variant (M6). */
+const VALUE_KEYS = ["venueText", "counterpartName", "counterpartSource", "address", "changes", "tip", "questionsText"] as const;
+
+/** M6: the same params with every user-supplied value removed (also from the embedded plan). */
+export function valueFreeParams(params: TemplateParams | Record<string, unknown>): TemplateParams {
+  const out: Record<string, unknown> = { ...params };
+  for (const k of VALUE_KEYS) delete out[k];
+  const plan = (params as TemplateParams).plan;
+  if (plan) out.plan = { ...plan, venueText: null, counterpartName: null, counterpartSource: null };
+  return out as TemplateParams;
+}
+
+/**
+ * M6 (I10): render user-facing copy and check the RENDERED text in discreet states. If a value
+ * the user typed makes it indiscreet, fall back to the value-free variant; if that still is not
+ * discreet, return null (the caller drops the send and logs it).
+ */
+export function renderForUser(
+  id: TemplateId,
+  params: TemplateParams | Record<string, unknown>,
+  state: PlanState | null | undefined,
+  render: (id: TemplateId, params: TemplateParams | Record<string, unknown>) => string = (i, p) => renderTemplate(i, p),
+): string | null {
+  const text = render(id, params);
+  if (!state || !DISCREET.includes(state) || isDiscreet(text)) return text;
+  const alt = render(id, valueFreeParams(params));
+  return isDiscreet(alt) ? alt : null;
 }
 
 export function variantCount(id: TemplateId): number {
