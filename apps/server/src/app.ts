@@ -24,6 +24,7 @@ import { JobScheduler } from "./scheduler/jobs.js";
 import { transcribe } from "./speech/stt.js";
 import { OpenAiTts, PCM_SAMPLE_RATE, type SpeechRenderer } from "./speech/tts.js";
 import { acquireLock, openStore, releaseLock, startLockHeartbeat, type Store } from "./store/db.js";
+import { StoreDialogueRepo } from "./store/dialogueRepo.js";
 import * as repo from "./store/repo.js";
 import { createControlPort, type ControlPort } from "./testing/controlPort.js";
 import { clockFromTimeScale, ScaledClock } from "./util/clock.js";
@@ -65,6 +66,8 @@ export interface App {
   channel: GatewayChannel;
   executor: GatewayExecutor;
   runtime: PlanRuntime;
+  /** Store-backed DialogueRepo for the dialogue ports (M4). */
+  dialogueRepo: StoreDialogueRepo;
   scheduler: JobScheduler;
   terminal: TerminalBridge | null;
   controlPort: ControlPort | null;
@@ -78,18 +81,11 @@ export interface App {
   stop(reason?: string): Promise<void>;
 }
 
-/**
- * Address-level stop flags (I14) kept in the counters table (day "stopped", key = address),
- * because the store has no dedicated table yet (proposed: stopped_addresses).
- */
+/** Address-level stop flags (I14) in the stopped_addresses table (M4; migration 3 moved the old counters rows). */
 export function storeStopList(store: Store): { isStopped(a: E164): boolean; setStopped(a: E164, stopped: boolean): void } {
   return {
-    isStopped: (a) => repo.getCounter(store, "stopped", a) > 0,
-    setStopped: (a, stopped) => {
-      if (stopped) {
-        if (repo.getCounter(store, "stopped", a) === 0) repo.incrementCounter(store, "stopped", a);
-      } else store.sqlite.prepare("DELETE FROM counters WHERE day = 'stopped' AND key = ?").run(a);
-    },
+    isStopped: (a) => repo.isStopped(store, a),
+    setStopped: (a, stopped) => repo.setStopped(store, a, stopped ? new Date() : null),
   };
 }
 
@@ -237,6 +233,11 @@ export function createApp(env: Env, deps: AppDeps = {}): App {
     onCritical: (event, info) => logger.error({ critical: true, event, ...info }, "CRITICAL plan event"),
   });
   executor.bind({ ingestFix: (id, fix) => runtime.ingestFix(id, fix), dispatch: (id, e) => runtime.dispatch(id, e) });
+  const dialogueRepo = new StoreDialogueRepo(store, {
+    createDraft: (input) => runtime.createDraft(input),
+    updatePlanFields: (planId, patch) => runtime.updatePlanFields(planId, patch),
+    now: () => clock.now(),
+  });
 
   let handler: InboundHandler = async (m: NormalizedInbound) => {
     logger.info({ id: m.message.id, from: last4(m.message.from), kind: m.message.content.kind, flags: m.flags }, "inbound (no dialogue handler attached)");
@@ -276,6 +277,7 @@ export function createApp(env: Env, deps: AppDeps = {}): App {
     channel,
     executor,
     runtime,
+    dialogueRepo,
     scheduler,
     terminal,
     controlPort,

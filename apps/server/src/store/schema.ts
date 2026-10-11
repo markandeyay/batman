@@ -47,6 +47,8 @@ export const userGuardians = sqliteTable(
     status: text("status", { enum: ["pending", "accepted", "declined", "expired", "revoked"] }).notNull(),
     requestedAt: ts("requested_at").notNull(),
     respondedAt: ts("responded_at"),
+    /** When gdn_optin_request was sent (shared pool: only after the guardian texts first). */
+    optinSentAt: ts("optin_sent_at"),
   },
   (t) => [primaryKey({ columns: [t.userId, t.guardianId] })],
 );
@@ -186,6 +188,21 @@ export const counters = sqliteTable(
   (t) => [primaryKey({ columns: [t.day, t.key] })],
 );
 
+/** M4 (I14): address-level STOP flags for anyone (user, guardian, or both). */
+export const stoppedAddresses = sqliteTable("stopped_addresses", {
+  addressE164: text("address_e164").primaryKey(),
+  stoppedAt: ts("stopped_at").notNull(),
+});
+
+/** M4: per-user conversational context (dialogue/ports.ts DialogueState), resumable (4.2). */
+export const dialogueState = sqliteTable("dialogue_state", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  stateJson: text("state_json").notNull(),
+  updatedAt: ts("updated_at").notNull(),
+});
+
 /** M2 (I16): outbound effects written with the plan update, drained after commit, replayed on boot. */
 export const outbox = sqliteTable(
   "outbox",
@@ -228,6 +245,8 @@ export const ALL_TABLES = {
   counters,
   locks,
   outbox,
+  stopped_addresses: stoppedAddresses,
+  dialogue_state: dialogueState,
   schema_version: schemaVersion,
 } as const;
 

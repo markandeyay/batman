@@ -227,6 +227,54 @@ export interface GuardianLink {
   status: GuardianLinkStatus;
   requestedAt: Date;
   respondedAt: Date | null;
+  /** When gdn_optin_request was sent (M4; shared pool: after the guardian texts first). */
+  optinSentAt: Date | null;
+}
+
+/** Insert or replace a full consent record (dialogue layer, M4). */
+export function upsertGuardianLink(st: Store, link: GuardianLink): void {
+  st.sqlite
+    .prepare(
+      `INSERT INTO user_guardians (user_id, guardian_id, status, requested_at, responded_at, optin_sent_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, guardian_id) DO UPDATE SET status = excluded.status, requested_at = excluded.requested_at,
+         responded_at = excluded.responded_at, optin_sent_at = excluded.optin_sent_at`,
+    )
+    .run(link.userId, link.guardianId, link.status, link.requestedAt.getTime(), link.respondedAt?.getTime() ?? null, link.optinSentAt?.getTime() ?? null);
+}
+
+export function updateGuardian(st: Store, id: string, patch: { displayName?: string | null; stoppedAt?: Date | null }): void {
+  const set: Partial<typeof s.guardians.$inferInsert> = {};
+  if (patch.displayName !== undefined) set.displayName = patch.displayName;
+  if (patch.stoppedAt !== undefined) set.stoppedAt = patch.stoppedAt;
+  if (Object.keys(set).length > 0) st.db.update(s.guardians).set(set).where(eq(s.guardians.id, id)).run();
+}
+
+// ---------- stopped_addresses (I14, M4) ----------
+
+export function setStopped(st: Store, address: E164, at: Date | null): void {
+  if (at) st.sqlite.prepare("INSERT INTO stopped_addresses (address_e164, stopped_at) VALUES (?, ?) ON CONFLICT(address_e164) DO UPDATE SET stopped_at = excluded.stopped_at").run(address, at.getTime());
+  else st.sqlite.prepare("DELETE FROM stopped_addresses WHERE address_e164 = ?").run(address);
+}
+
+export function isStopped(st: Store, address: E164): boolean {
+  return st.sqlite.prepare("SELECT 1 FROM stopped_addresses WHERE address_e164 = ?").get(address) !== undefined;
+}
+
+// ---------- dialogue_state (M4) ----------
+
+export function getDialogueStateJson(st: Store, userId: string): unknown {
+  const r = st.sqlite.prepare("SELECT state_json FROM dialogue_state WHERE user_id = ?").get(userId) as { state_json: string } | undefined;
+  return r ? parseJson<unknown>(r.state_json, null) : null;
+}
+
+export function setDialogueStateJson(st: Store, userId: string, state: unknown, now: Date): void {
+  if (state === null || state === undefined) {
+    st.sqlite.prepare("DELETE FROM dialogue_state WHERE user_id = ?").run(userId);
+    return;
+  }
+  st.sqlite
+    .prepare("INSERT INTO dialogue_state (user_id, state_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at")
+    .run(userId, JSON.stringify(state), now.getTime());
 }
 
 export function setGuardianLink(

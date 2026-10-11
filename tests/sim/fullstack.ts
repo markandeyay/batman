@@ -33,7 +33,7 @@ import { JobScheduler } from "../../apps/server/src/scheduler/jobs.js";
 import { openStore, type Store } from "../../apps/server/src/store/db.js";
 import * as repo from "../../apps/server/src/store/repo.js";
 import { FakeClock } from "../../apps/server/src/util/clock.js";
-import { StoreDialogueRepo } from "./storeDialogueRepo.js";
+import { StoreDialogueRepo } from "../../apps/server/src/store/dialogueRepo.js";
 
 export const START = new Date("2026-10-10T23:00:00Z"); // Sat 7:00 PM in New York
 export const TZ = "America/New_York";
@@ -348,14 +348,13 @@ export class FullStack {
       onError: (e) => this.errors.push(e),
       lastUserMessageId: (plan) => this.lastInbound.get(plan.userId) ?? null,
     });
-    const prevRepo: StoreDialogueRepo | undefined = this.repo;
-    this.repo = new StoreDialogueRepo(this.store, () => this.runtime, this.clock);
-    if (prevRepo) {
-      // Side maps model tables that do not exist yet; carry them over a restart.
-      for (const [k, v] of prevRepo.optinSentAt) this.repo.optinSentAt.set(k, v);
-      for (const [k, v] of prevRepo.stopped) this.repo.stopped.set(k, v);
-      for (const [k, v] of prevRepo.dialogue) this.repo.dialogue.set(k, v);
-    }
+    // The production store-backed DialogueRepo (M4): stop flags, dialogue state, and opt-in
+    // times are real tables, so they survive a restart with no carry-over.
+    this.repo = new StoreDialogueRepo(this.store, {
+      createDraft: (input) => this.runtime.createDraft(input),
+      updatePlanFields: (planId, patch) => this.runtime.updatePlanFields(planId, patch),
+      now: () => this.clock.now(),
+    });
     this.ports = this.dialoguePorts();
   }
 

@@ -185,4 +185,25 @@ CREATE TABLE outbox (
 CREATE INDEX outbox_pending ON outbox(status, created_at);
 `,
   },
+  {
+    version: 3,
+    name: "stop flags, dialogue state, opt-in sent time (M4, I1, I14)",
+    sql: `
+CREATE TABLE stopped_addresses (
+  address_e164 TEXT PRIMARY KEY,
+  stopped_at INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO stopped_addresses (address_e164, stopped_at)
+  SELECT key, 0 FROM counters WHERE day = 'stopped';
+DELETE FROM counters WHERE day = 'stopped';
+
+CREATE TABLE dialogue_state (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  state_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+ALTER TABLE user_guardians ADD COLUMN optin_sent_at INTEGER;
+`,
+  },
 ];

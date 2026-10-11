@@ -110,6 +110,19 @@ export class PlanRuntime {
     return plan;
   }
 
+  /**
+   * Edit non-state plan fields through this plan's queue (X2: never interleaves with a running
+   * dispatch). The dialogue then dispatches plan_edited so the engine reschedules (H4).
+   */
+  updatePlanFields(planId: string, patch: Partial<EnginePlan>): Promise<void> {
+    return this.serial(planId, async () => {
+      const p = repo.getPlan(this.o.store, planId);
+      if (!p) return;
+      const { state: _s, id: _i, userId: _u, ...safe } = patch;
+      repo.savePlan(this.o.store, { ...p, ...safe, updatedAt: this.o.clock.now() });
+    });
+  }
+
   /** Apply one event to a plan, persist, and perform effects. Serialized per plan. */
   dispatch(planId: string, event: EngineEvent, extra: Pick<EngineContext, "share" | "lastUserMessageId"> = {}): Promise<EngineOutput | null> {
     return this.serial(planId, () => this.dispatchNow(planId, event, extra));
