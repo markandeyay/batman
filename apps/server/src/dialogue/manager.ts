@@ -48,16 +48,25 @@ async function route_(ports: DialoguePorts, msg: InboundMessage): Promise<string
   const c = msg.content;
   const text = c.kind === "text" ? c.text : null;
 
-  // 1. Code words first, before anything else and before any model call (I8).
-  if (user && inWindow(plan) && text !== null) {
-    const cw = await ports.repo.getCodeWords(user.id);
-    if (cw) {
-      const m = matchCodeWords(text, cw, { fromVoice: c.kind === "text" && c.fromVoice === true });
-      if (m) {
-        // The engine sends the innocuous reply and places the call or alert (6.6, 6.7, I9).
+  // 1. Code words first, for every onboarded user in every state, before anything else and
+  //    before any model call (I8, H3). A code word never reaches the model.
+  if (user && onboardingStep(user) === "done" && text !== null) {
+    // Re-entering code words outside a window: the reply contains the words themselves.
+    const ds0 = await ports.repo.getDialogueState(user.id);
+    const reentering = ds0?.pending?.kind === "codewords" && !inWindow(plan);
+    const cw = reentering ? null : await ports.repo.getCodeWords(user.id);
+    const m = cw ? matchCodeWords(text, cw, { fromVoice: c.kind === "text" && c.fromVoice === true }) : null;
+    if (m) {
+      if (await ports.repo.isStopped(from)) await ports.repo.setStopped(from, null); // the user re-engaged
+      if (isOpen(plan) && plan.state !== "DRAFT") {
+        // The engine sends the innocuous reply and places the call or alert (6.6, 6.7, I9). It
+        // also decides whether a guardian can be alerted before the window (H3).
         await ports.dispatch(plan.id, m.kind === "alert" ? { type: "alert_word", messageId: msg.id } : { type: "exit_word", messageId: msg.id });
-        return m.kind === "alert" ? "codeword_alert" : "codeword_exit";
+      } else {
+        // No armed plan: nothing to escalate. Reply like a friend and stop (I9).
+        await sendTemplate(ports, from, m.kind === "alert" ? "cw_alert_reply" : "cw_exit_reply", {}, { planState: plan?.state ?? null });
       }
+      return m.kind === "alert" ? "codeword_alert" : "codeword_exit";
     }
   }
 

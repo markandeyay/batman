@@ -227,13 +227,14 @@ describe("15.3 full stack scenarios", () => {
     s.at(60, "user", "pineapples are gross");
     await s.runUntil(61);
     expect(s.routes.at(-1)!.route).toBe("codeword_exit");
-    // Outside a window (plan ARMED, not yet started) code words are not matched (8.4 step 7).
+    // H3 (I8): before the window (plan ARMED) code words are matched too; the exit word still
+    // rings the phone, and the text never reaches intake.
     const t = new FullStack({ llm: llmScript() });
     sims.push(t);
     await t.onboard();
     await t.planDate();
-    expect(await t.text("user", "pineapples are gross")).not.toMatch(/^codeword/);
-    expect(t.callLog).toEqual([]);
+    expect(await t.text("user", "pineapples are gross")).toBe("codeword_exit");
+    expect(t.callLog.map((c) => c.script)).toEqual(["fake"]);
   });
 
   it("S-16: voice note during a check yields voice_unavailable; a transcript with the alert word alerts", async () => {

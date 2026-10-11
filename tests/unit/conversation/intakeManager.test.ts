@@ -180,11 +180,11 @@ describe("manager routing (8.4)", () => {
     expect(h.sent).toEqual([]); // the engine sends the innocuous reply (I9)
   });
 
-  it("code words outside a window do nothing special", async () => {
+  it("code words before the window are still caught and never reach intake (H3, I8)", async () => {
     const h = makeHarness();
     const { user, guardianId } = await seedUser(h);
     await seedPlan(h, user.id, guardianId, "ARMED");
-    expect(await h.text(USER, "pineapple")).not.toMatch(/^codeword/);
+    expect(await h.text(USER, "pineapple")).toBe("codeword_exit");
   });
 
   it("voice transcripts get the phonetic pass", async () => {

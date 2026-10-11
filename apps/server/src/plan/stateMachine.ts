@@ -207,6 +207,10 @@ function row<K extends EventKey>(r: TransitionRow<K>): TransitionRow {
 
 const NON_TERMINAL: readonly PlanState[] = ["DRAFT", "AWAITING_GUARDIAN", "ARMED", "PRE_MEETUP", "ACTIVE", "OVERTIME", "CHECKING", "ESCALATED", "CLOSING"];
 const LIVE: readonly PlanState[] = ["ACTIVE", "OVERTIME", "CHECKING"];
+/** Armed but before the window (H3: code words and distress still count here). */
+const PRE_WINDOW: readonly PlanState[] = ["ARMED", "AWAITING_GUARDIAN"];
+/** Jobs of a plan that has not started yet; cancelled when it escalates early. */
+const PRE_START_JOBS: JobKind[] = ["t_minus_30", "start", "reconfirm", "draft_expire", "loc_poll", "loc_reminder"];
 
 function requiredFieldsPresent(p: EnginePlan): boolean {
   return !!p.type && !!p.startAt && !!p.endAt && !!p.venueText;
@@ -466,6 +470,17 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     },
   }),
   row({
+    id: "exit-word-pre-window",
+    spec: "H3: exit word before T-30 still rings the phone (6.6); no post-exit watch outside a window (I3)",
+    from: PRE_WINDOW,
+    on: "exit_word",
+    run: (tx) => {
+      tx.send("user", "cw_exit_reply");
+      tx.call("user", "fake");
+      tx.audit("exit_word");
+    },
+  }),
+  row({
     id: "post-exit",
     spec: "6.6 step 4 / T-POST-EXIT",
     from: ["ACTIVE", "OVERTIME", "CHECKING"],
@@ -484,6 +499,27 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     },
   }),
   row({
+    id: "alert-word-pre-window",
+    spec: "H3 (I8, I16): alert word before T-30 escalates when a guardian has accepted (6.7)",
+    from: PRE_WINDOW,
+    on: "alert_word",
+    when: (p, _e, ctx) => canMessageGuardian(p, ctx),
+    run: (tx) => {
+      tx.send("user", "cw_alert_reply");
+      escalate(tx, { kind: "alert_word" });
+    },
+  }),
+  row({
+    id: "alert-word-no-guardian",
+    spec: "H3: alert word before T-30 with no accepted guardian: innocuous reply only (I9)",
+    from: PRE_WINDOW,
+    on: "alert_word",
+    run: (tx) => {
+      tx.send("user", "cw_alert_reply");
+      tx.audit("alert_word_no_guardian");
+    },
+  }),
+  row({
     id: "distress",
     spec: "6.2 any active + explicit distress -> ESCALATED + exit call (4.6)",
     from: WINDOW_STATES,
@@ -492,6 +528,28 @@ export const TRANSITIONS: readonly TransitionRow[] = [
       tx.send("user", "act_calling_you_now");
       tx.call("user", "fake");
       escalate(tx, { kind: "distress" });
+    },
+  }),
+  row({
+    id: "distress-pre-window",
+    spec: "H3: explicit distress before T-30 escalates when a guardian has accepted (4.6)",
+    from: PRE_WINDOW,
+    on: "distress",
+    when: (p, _e, ctx) => canMessageGuardian(p, ctx),
+    run: (tx) => {
+      tx.send("user", "act_calling_you_now");
+      tx.call("user", "fake");
+      escalate(tx, { kind: "distress" });
+    },
+  }),
+  row({
+    id: "distress-no-guardian",
+    spec: "H3: explicit distress before T-30 with no accepted guardian: point to 911 (no_plan_distress, I6)",
+    from: PRE_WINDOW,
+    on: "distress",
+    run: (tx) => {
+      tx.send("user", "no_plan_distress");
+      tx.audit("distress_no_guardian");
     },
   }),
 
@@ -981,6 +1039,12 @@ function escalate(tx: Tx, reason: EscalationReason): void {
     tx.audit("escalation_reason", { reason: reason.kind });
     return;
   }
+  if (PRE_WINDOW.includes(p.state)) {
+    // H3: escalating before the window. Remember where we came from so a de-escalation re-arms.
+    p.preEscalationState = p.state;
+    tx.cancel(PRE_START_JOBS);
+    if (p.locationMode === "findmy") tx.emit({ kind: "start_watch" }); // best effort: a share may already be visible
+  }
   tx.setState("ESCALATED");
   p.escalatedAt = tx.now;
   p.escalationReason = reason;
@@ -1167,6 +1231,15 @@ function deescalate(tx: Tx, messageId: string | null): void {
 /** Back to ACTIVE after an escalation: restart the end timer and risk ticks. */
 function resumeActive(tx: Tx): void {
   const p = tx.p;
+  const pre = p.preEscalationState;
+  p.preEscalationState = null;
+  if (pre && p.startAt && tx.now.getTime() < p.startAt.getTime()) {
+    // H3: the escalation started before the meetup; the meetup has not started yet, so re-arm.
+    tx.cancel(["risk_tick", "end_grace"]);
+    tx.emit({ kind: "stop_watch" });
+    armPlan(tx);
+    return;
+  }
   tx.setState("ACTIVE");
   if (p.endAt && tx.now.getTime() >= p.endAt.getTime() + p.graceMin * MIN_MS - MIN_MS) {
     p.endAt = new Date(tx.now.getTime() + DEFAULT_EXTENSION_MIN * MIN_MS);

@@ -532,8 +532,20 @@ describe("6.6 exit word", () => {
     expect(r.fx).toContainEqual({ kind: "cancel_jobs", kinds: ["ladder", "overtime_timeout"] });
   });
 
-  it("outside a window it does nothing", () => {
-    expect(apply(basePlan({ state: "ARMED" }), { type: "exit_word", messageId: "u-1" }, ctxAt(at(-60))).fx).toEqual([]);
+  it("ARMED: it still rings the phone (H3), with no post-exit watch outside the window (I3)", () => {
+    const r = apply(basePlan({ state: "ARMED" }), { type: "exit_word", messageId: "u-1" }, ctxAt(at(-60)));
+    expect(r.row).toBe("exit-word-pre-window");
+    expect(kinds(r.fx)).toEqual(["send:user:cw_exit_reply", "call:user:fake"]);
+  });
+
+  it("ARMED / AWAITING_GUARDIAN: alert word and distress escalate only with an accepted guardian (H3)", () => {
+    const pending = { guardian: { displayName: "Priya", linkStatus: "pending" as const, stopped: false } };
+    expect(apply(basePlan({ state: "ARMED" }), { type: "alert_word", messageId: "u" }, ctxAt(at(-60))).row).toBe("alert-word-pre-window");
+    expect(apply(basePlan({ state: "AWAITING_GUARDIAN" }), { type: "alert_word", messageId: "u" }, ctxAt(at(-60), pending)).row).toBe("alert-word-no-guardian");
+    expect(apply(basePlan({ state: "ARMED" }), { type: "distress", messageId: "u" }, ctxAt(at(-60))).row).toBe("distress-pre-window");
+    const d = apply(basePlan({ state: "AWAITING_GUARDIAN" }), { type: "distress", messageId: "u" }, ctxAt(at(-60), pending));
+    expect(d.row).toBe("distress-no-guardian");
+    expect(sends(d.fx)).toEqual(["user:no_plan_distress"]);
   });
 
   it("post-exit: still inside the venue -> T-POST-EXIT check", () => {
