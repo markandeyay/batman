@@ -57,7 +57,10 @@ export interface Sent {
   template: TemplateId | null;
   text: string;
   origin: "engine" | "dialogue";
-  /** State of the user's plan when the message left (discretion checks, I10). */
+  /**
+   * State of the plan the message is about when it left: the engine's plan for engine sends,
+   * the recipient's own open plan for dialogue sends (discretion checks, I4, I10).
+   */
   state: PlanState | null;
   critical?: boolean;
   notifyAnyway?: boolean;
@@ -149,7 +152,7 @@ export const DEFAULT_GEO: Record<string, GeocodeResult> = {
   "logan bar": { lat: 41.9208, lng: -87.7067, displayName: "Logan Bar", placeType: "bar", residential: false },
 };
 
-const EXTRACTION_BASE = {
+export const EXTRACTION_BASE = {
   type: null,
   startAtText: null,
   startAtISO: null,
@@ -412,7 +415,7 @@ export class FullStack {
         const text = renderTemplate(e.template, this.engineParams(e, plan), { variant: 0 });
         const ref = await this.channel.sendText(address, text);
         this.quota.countSend(address);
-        const extra: Partial<Sent> = {};
+        const extra: Partial<Sent> = { state: plan.state };
         if (e.critical) extra.critical = true;
         if (e.notifyAnyway) extra.notifyAnyway = true;
         this.record(address, e.template, text, "engine", ref, extra);
