@@ -206,11 +206,16 @@ export class GatewayChannel implements Channel {
   private readonly log: ChannelLogger;
   private readonly sleep: (ms: number) => Promise<void>;
 
-  constructor(private readonly o: GatewayChannelOptions) {
+  constructor(private readonly o: GatewayChannelOptions & { focus?: FocusApi | null }) {
     this.recent = new BoundedMap(o.recentMax ?? 500);
     this.quota = o.quota ?? new QuotaGate(o.store, o.clock);
     this.log = o.logger ?? noopLog;
     this.sleep = o.sleep ?? realSleep;
+  }
+
+  /** Attach the advanced-imessage client once it is connected (Notify Anyway). */
+  setFocus(focus: FocusApi | null): void {
+    this.o.focus = focus;
   }
 
   /** Remember an inbound message so react(messageId) can find it (also under its parent id). */

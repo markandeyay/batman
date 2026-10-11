@@ -111,6 +111,11 @@ export class GatewayExecutor implements OutboundPort {
     this.sinks = sinks;
   }
 
+  /** Attach the Find My request client once advanced-imessage is connected. */
+  setLocations(api: LocationRequestApi | null): void {
+    this.o.locations = api;
+  }
+
   /** Resolves when background calls (and their fallbacks) have finished. Tests and shutdown. */
   async idle(): Promise<void> {
     while (this.pendingCalls.size > 0) await Promise.allSettled([...this.pendingCalls]);
