@@ -114,3 +114,10 @@ Format: date, decision, why, spec section affected.
 - First real-model run: 95.1% (key needed ANTHROPIC_WORKSPACE_ID, now supported). Added deterministic clear-reply rules that run after the distress and command pre-pass and before the model: whole-message clear positives and positive emoji alone are OK; bare negatives ("no", "nah", "naw", "nope") to a wellbeing check are NOT_OK (not after "Still out?"); fear emoji alone are NOT_OK; any reply ending in "?" is never a clear positive. Prompt gained guidance on harmless sarcasm, enthusiasm, nervousness, Marketplace or viewing mismatch, and "can i call you back" vs "can you call me".
 - Result: 98.70% accuracy on 307 replies, 0 NOT_OK labeled OK; plan extraction 100% on 723 fields; code words 100% recall, 0 false positives.
 - Kept on purpose: "send help ... jk all good" is NOT_OK because the explicit distress rule wins (spec 9.3). Over-escalation is the safe failure. Two classifier unit tests now use inputs the new rule does not settle, so they still exercise the model and timeout paths (assertions unchanged in intent).
+
+## 2026-10-10: Gateway judgment calls (integration-engineer, accepted)
+- Check-in (L2) calls run in the background like the exit call, so lad_l2_text goes out while the phone rings rather than after the call (deviation from 10.3 ordering; keeps the plan queue free for code words).
+- Quota "near cap" is 95% (4,750 messages, 47 new conversations per day); any send for a plan inside its window counts as safety-critical and proceeds.
+- Without speech, LiveKit calls would play a 1 s generated tone; on the shared pool calls 403 anyway and fall back to text.
+- `pnpm chat` uses fictional console identities (+15555550100 user, +15555550101 guardian); `createApp({ imessage: false })` runs console-only.
+- Safety review findings and their status: docs/reviews/2026-10-10-safety-phases-1-4.md.

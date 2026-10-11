@@ -535,3 +535,9 @@ interface SpeechCreateParams {
 - Shared token: `POST /projects/{id}/imessage/tokens` returned `type: "shared"`, `expiresIn: 900` (15 min). Refresh at 80% (12 min).
 - Every gRPC call that targets the human's registered number (`addresses.isIMessageAvailable`, `addresses.isFocusSilenced`, `addresses.get`, `chats.get`, `messages.listInChat`, `locations.request`, `locations.get`) failed with `AuthenticationError`, gRPC code 7 PERMISSION_DENIED, `retryable=false`, message `[spectrum-imessage] Target not allowed for this project`, even though `GET /projects/{id}/users/` lists the number as a registered shared user. Photon troubleshooting names two causes: the number is not a registered user (ruled out), or the Apple iMessage handle differs from the registered number (to check on the iPhone via https://debug.photon.codes). It may also require the user to text the assigned line first. Unresolved; see docs/spikes/S1.md.
 - `locations.list()` on a shared token fails with gRPC 9 FAILED_PRECONDITION `No instance routed for this request`. There is no target to route by. Batman must never call `list()`; acceptance is detected with `get(address)` (spec 7.1). Invariant I2 then holds by construction.
+
+## Addendum 2026-10-10 (from the gateway build, verified against installed @spectrum-ts/imessage 12.10.1 source)
+- Contact card sharing: `imessage(space).shareContactCard()` exists and works on the shared pool (needs a type cast).
+- Message ids: the SDK passes the message id through unchanged as the iMessage id. On the shared pool the `spc-msg-<uuid>` id is what gRPC expects, so `messages.notifySilenced("any;-;<number>", id)` takes it directly; strip a `p:<i>/` prefix for parts of multi-part messages.
+- Multi-part inbound messages arrive as ONE message with content type `group` whose parts are inside it (not separate messages).
+- Reactions: only added reactions are delivered; removals are not.
