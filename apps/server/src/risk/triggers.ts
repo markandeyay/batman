@@ -20,6 +20,8 @@ export const FAR_DISTANCE_M = 5_000;
 export const NOARRIVE_AFTER_MS = 20 * 60_000;
 export const DEPARTURE_END_MARGIN_MS = 10 * 60_000;
 export const VENUE_CHANGE_MAX_M = 2_000;
+/** L5: after the exit word the user is expected to leave; T-POST-EXIT decides at +10 min. */
+export const EXIT_DEPARTURE_QUIET_MS = 10 * 60_000;
 const CAR_UNEXPECTED: readonly Transport[] = ["walk", "transit", "rideshare"];
 
 export interface FiredTrigger {
@@ -119,7 +121,9 @@ export function evaluateTriggers(plan: EnginePlan, now: Date, fixes: readonly Fi
       if (venue) {
         const dep = detectDeparture(fixes, venue, base, now);
         const fresh = dep && (!plan.lastResolvedAt || dep.leftAt.getTime() > plan.lastResolvedAt.getTime());
-        if (dep && fresh) {
+        // L5: a departure within 10 min of the exit word is the expected way out, not a trigger.
+        const exitQuiet = !!plan.exitWordAt && now.getTime() < plan.exitWordAt.getTime() + EXIT_DEPARTURE_QUIET_MS;
+        if (dep && fresh && !exitQuiet) {
           const vehicle = isVehicleSpeed(fixes.filter((f) => f.at.getTime() >= dep.leftAt.getTime() - 120_000));
           // "Departure before planned end - 10 min" is judged by when the user left, not by
           // when two outside fixes confirmed it (about a minute later).

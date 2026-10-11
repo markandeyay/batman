@@ -1431,6 +1431,8 @@ function onPostExit(tx: Tx): void {
   const status = postExitStatus(p, tx.now, tx.ctx.fixes);
   const paused = p.state === "OVERTIME" || p.state === "CHECKING";
   if (status === "left") {
+    // L5: leaving after the exit word was the plan; acknowledge that departure so it never fires later.
+    p.lastResolvedAt = tx.now;
     if (paused) {
       resolveLadder(tx);
       if (p.endAt && tx.now.getTime() >= p.endAt.getTime() + p.graceMin * MIN_MS) enterOvertime(tx);
