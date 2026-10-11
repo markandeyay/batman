@@ -51,7 +51,7 @@ export function hasMarkdown(text: string): boolean {
     /(\*\*|__|`|~~)/.test(text) ||
     /^\s{0,3}#{1,6}\s/m.test(text) ||
     /^\s*[-*+•]\s+/m.test(text) ||
-    /^\s*\d+[.)]\s+/m.test(text) ||
+    /^\s*\d+\.\s+/m.test(text) || // "1." lists render as markdown; "1)" stays plain text (spec 4.2 copy)
     /\[[^\]]+\]\([^)]+\)/.test(text) ||
     /^\s*>/m.test(text) ||
     /\|.*\|/.test(text) ||
