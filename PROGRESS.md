@@ -6,6 +6,8 @@ Spec: docs/BATMAN_SPEC.md. Decisions: DECISIONS.md. Verified APIs: docs/PHOTON_N
 ## Current phase
 DEPLOYED: Batman runs on Fly.io (app batman-safety, machine 863669fee9e558, iad) since 2026-10-11 02:19 UTC; logs show "Batman is listening". Do NOT run pnpm dev locally against the Batman project while it runs.
 All code merged; pnpm verify green (1066 tests + 1 expected-fail). Safety review findings all fixed. index.ts wires the dialogue manager to app.ts.
+Landing page: separate repo https://github.com/markandeyay/batmanlandingpage cloned at C:\Users\yalam\batmanlandingpage (Vite + GSAP + Lenis, inspired by markandeyay/stussy = stussy.ink, light and trustworthy). Brand and motion design agents running; builder next. Sign-up API (Vercel function) will register a phone on the Photon project and return the personal Batman number + sms link.
+Redeployed 2026-10-11 03:36 UTC with live UX fixes (time edits, personality, read receipts).
 Next: live onboarding from the human iPhone against the cloud server; second safety-reviewer pass on the gateway and index.ts; guided iPhone session (16.4); README demo notes; landing page (separate repo, human to provide stuci.ink repo).
 Ops: logs via flyctl logs -a batman-safety; redeploy via flyctl deploy --ha=false --remote-only -a batman-safety (flyctl.exe is under %LOCALAPPDATA%MicrosoftWinGetPackagesFly-io.flyctl_*).
 
