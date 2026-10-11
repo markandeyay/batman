@@ -123,11 +123,12 @@ export class FakeCallService implements CallService {
 
 /** Fake Find My source. The harness pushes track fixes into the active handler. */
 export class FakeLocationSource implements LocationSource {
-  handler: ((fix: Fix, fromAddress?: string | null) => boolean) | null = null;
+  /** The harness passes guardedFixHandler, which reports whether the fix was accepted. */
+  handler: ((fix: Fix, fromAddress: E164) => boolean) | null = null;
   address: E164 | null = null;
-  async start(userAddress: E164, onFix: (fix: Fix) => void): Promise<void> {
+  async start(userAddress: E164, onFix: (fix: Fix, fromAddress: E164) => void): Promise<void> {
     this.address = userAddress;
-    this.handler = onFix as (fix: Fix, fromAddress?: string | null) => boolean;
+    this.handler = onFix as unknown as (fix: Fix, fromAddress: E164) => boolean;
   }
   async stop(): Promise<void> {
     this.handler = null;
@@ -434,7 +435,7 @@ export class FullStack {
         const guarded = guardedFixHandler(user.addressE164, () => repo.getPlan(this.store, planId)?.state ?? null, (fix) => {
           this.pendingFixes.push(this.runtime.ingestFix(planId, fix));
         });
-        await this.location.start(user.addressE164, guarded as unknown as (fix: Fix) => void);
+        await this.location.start(user.addressE164, guarded);
       },
       stopWatch: async () => {
         this.watchPlanId = null;
@@ -580,7 +581,7 @@ export class FullStack {
       await this.clock.set(new Date(next));
       if (fix && fix.getTime() <= next) {
         const f = this.track!.fixes[this.fixPtr++]!;
-        this.location.handler?.(f, this.location.address);
+        if (this.location.address) this.location.handler?.(f, this.location.address);
         await this.flushFixes();
         continue;
       }

@@ -166,8 +166,9 @@ export class ReplayLocationSource implements LocationSource {
     this.catchUpMs = opts.catchUpMs ?? 15 * 60_000;
   }
 
-  async start(userAddress: E164, onFix: (fix: Fix) => void): Promise<void> {
+  async start(userAddress: E164, onFix: (fix: Fix, fromAddress: E164) => void): Promise<void> {
     if (this.opts.userAddress && this.opts.userAddress !== userAddress) return; // I2: only the plan's user
+    const emit = (f: Fix) => onFix(f, userAddress);
     this.stopped = false;
     const m = materializeTrack(this.track, this.opts.startAt);
     if (!m.share.accepted) return;
@@ -175,10 +176,10 @@ export class ReplayLocationSource implements LocationSource {
     const pending: Fix[] = [];
     for (const f of m.fixes) {
       if (f.at.getTime() <= now) {
-        if (now - f.at.getTime() <= this.catchUpMs) onFix(f);
+        if (now - f.at.getTime() <= this.catchUpMs) emit(f);
       } else pending.push(f);
     }
-    void this.play(pending, onFix);
+    void this.play(pending, emit);
   }
 
   private async play(pending: Fix[], onFix: (fix: Fix) => void): Promise<void> {

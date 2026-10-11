@@ -262,8 +262,12 @@ export class GatewayExecutor implements OutboundPort {
       },
     });
     this.sources.set(planId, src);
-    await src.start(r.address, (fix) => {
+    await src.start(r.address, (fix, fromAddress) => {
       if (!this.sources.has(planId)) return; // stopped: drop (I3)
+      if (fromAddress !== r.address) {
+        this.audit(planId, "fix_dropped_other_address"); // I2, L2: never stored
+        return;
+      }
       void this.sinks?.ingestFix(planId, fix).catch((err: unknown) => this.log.warn({ planId, error: describeError(err) }, "ingestFix failed"));
     });
     this.audit(planId, "watch_started");
@@ -289,8 +293,9 @@ export class GatewayExecutor implements OutboundPort {
     if (!r) return;
     const planId = plan.id;
     this.sources.set(planId, src);
-    await src.start(r.address, (fix) => {
+    await src.start(r.address, (fix, fromAddress) => {
       if (this.sources.get(planId) !== src) return;
+      if (fromAddress !== r.address) return; // I2, L2
       void this.sinks?.ingestFix(planId, fix);
     });
   }

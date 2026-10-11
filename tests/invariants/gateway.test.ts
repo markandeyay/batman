@@ -65,18 +65,18 @@ describe("I3 time-boxed", () => {
   it("fixes are stored only while the plan is in a window, and none arrive after stop_watch", async () => {
     const { store, plan } = seededStore("ACTIVE");
     const clock = new FakeClock(T0);
-    let emit: ((f: Fix) => void) | null = null;
+    let emit: ((f: Fix, from: E164) => void) | null = null;
     const src: LocationSource = { start: async (_a, cb) => void (emit = cb), stop: async () => {} };
     const t = makeExecutor(store, clock, { createLocationSource: () => src });
     const runtime = new PlanRuntime({ store, clock, jobs: { enqueue: () => 0, cancel: () => 0 }, out: t.executor, defaultTz: "America/New_York" });
     t.executor.bind({ ingestFix: (id, f) => runtime.ingestFix(id, f), dispatch: (id, e) => runtime.dispatch(id, e) });
     await t.executor.startWatch(plan);
-    emit!(fix());
+    emit!(fix(), USER);
     await flush();
     await new Promise((r) => setTimeout(r, 5));
     expect(repo.listFixes(store, plan.id)).toHaveLength(1);
     await t.executor.stopWatch(plan);
-    emit!(fix(41.95));
+    emit!(fix(41.95), USER);
     await new Promise((r) => setTimeout(r, 5));
     expect(repo.listFixes(store, plan.id)).toHaveLength(1);
     repo.savePlan(store, { ...repo.getPlan(store, plan.id)!, state: "CLOSED" });

@@ -495,6 +495,7 @@ export interface CallService {
 }
 
 export interface LocationSource {
-  start(userAddress: E164, onFix: (fix: Fix) => void): Promise<void>;
+  /** onFix carries the address the fix was read for; consumers drop any other address (I2, L2). */
+  start(userAddress: E164, onFix: (fix: Fix, fromAddress: E164) => void): Promise<void>;
   stop(): Promise<void>;
 }

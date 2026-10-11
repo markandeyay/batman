@@ -1,7 +1,7 @@
 // Gateway executor: every Effect kind, the 5 s exit-call fallback (spec 6.6 step 3), guardian
 // alert call skipped without speech, stop checks (I14), and PlanRuntime integration.
 import { describe, expect, it } from "vitest";
-import type { Fix, LocationSource } from "../../../apps/server/src/contracts.js";
+import type { E164, Fix, LocationSource } from "../../../apps/server/src/contracts.js";
 import { TargetNotAllowedError } from "../../../apps/server/src/gateway/errors.js";
 import { maskForStorage } from "../../../apps/server/src/gateway/executor.js";
 import { PlanRuntime } from "../../../apps/server/src/plan/runtime.js";
@@ -140,7 +140,7 @@ describe("GatewayExecutor effects", () => {
 
   it("start_watch/stop_watch run one LocationSource per plan and feed fixes to the runtime sink", async () => {
     const { store, plan } = seededStore("ACTIVE");
-    let emit: ((f: Fix) => void) | null = null;
+    let emit: ((f: Fix, from: E164) => void) | null = null;
     let stopped = 0;
     let shareEnded: (() => void) | null = null;
     const src: LocationSource = {
@@ -159,10 +159,10 @@ describe("GatewayExecutor effects", () => {
     t.executor.bind({ ingestFix: async (id) => void ingested.push(id), dispatch: async (_id, e) => void dispatched.push(e.type) });
     await t.executor.startWatch(plan);
     await t.executor.startWatch(plan); // idempotent
-    emit!({ lat: 1, lng: 2, accuracyM: 10, at: T0, locationType: "shallow", expiresAt: null, source: "findmy" });
+    emit!({ lat: 1, lng: 2, accuracyM: 10, at: T0, locationType: "shallow", expiresAt: null, source: "findmy" }, USER);
     shareEnded!();
     await t.executor.stopWatch(plan);
-    emit!({ lat: 1, lng: 2, accuracyM: 10, at: T0, locationType: "shallow", expiresAt: null, source: "findmy" });
+    emit!({ lat: 1, lng: 2, accuracyM: 10, at: T0, locationType: "shallow", expiresAt: null, source: "findmy" }, USER);
     expect(ingested).toEqual([plan.id]);
     expect(dispatched).toEqual(["location_not_shared"]);
     expect(stopped).toBe(1);
