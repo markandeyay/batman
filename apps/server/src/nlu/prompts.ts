@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const cache = new Map<string, string>();
 
-export type PromptName = "classifyReply" | "extractPlan" | "phraseQuestions";
+export type PromptName = "classifyReply" | "extractPlan" | "phraseQuestions" | "smallTalk";
 
 export function loadPrompt(name: PromptName): string {
   const hit = cache.get(name);

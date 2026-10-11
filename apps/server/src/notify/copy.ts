@@ -67,34 +67,79 @@ export interface PhraseResult {
 }
 
 /**
+ * Known facts for LLM copy, labeled so the model never confuses the user (the person it is
+ * texting) with the person they are meeting (live bug: "Nice, you're meeting Marky").
+ */
+export interface CopyFacts {
+  /** The person Batman is texting. Never the counterpart; never named in intake questions. */
+  userName?: string | null;
+  counterpartName?: string | null;
+  counterpartSource?: string | null;
+  venueText?: string | null;
+  guardianName?: string | null;
+  /** Other grounded strings (plan summary, capability lines). */
+  other?: readonly string[];
+}
+
+export function factValues(f: CopyFacts | readonly string[]): string[] {
+  if (Array.isArray(f)) return [...(f as readonly string[])];
+  const c = f as CopyFacts;
+  return [c.userName, c.counterpartName, c.counterpartSource, c.venueText, c.guardianName, ...(c.other ?? [])].filter(
+    (x): x is string => typeof x === "string" && x.trim() !== "",
+  );
+}
+
+/** True when `text` uses the user's first name as a word (and the counterpart is not namesake). */
+export function namesUser(text: string, facts: CopyFacts): boolean {
+  const first = (facts.userName ?? "").trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  if (first.length < 2) return false;
+  const cp = (facts.counterpartName ?? "").trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  if (cp === first) return false;
+  const esc = first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^\\p{L}])${esc}([^\\p{L}]|$)`, "iu").test(text);
+}
+
+/** Copy LLM budget (item: keep latency low): fast model, effort low, 6 s, template fallback. */
+export const COPY_TIMEOUT_MS = 6000;
+
+/**
  * Phrase the follow-up message. `facts` are the known plan values (names, places, times) the
  * model may mention; anything else it adds fails validation and the bank text is used.
  */
 export async function phraseQuestions(
   items: readonly CopyItem[],
-  facts: readonly string[],
+  facts: CopyFacts | readonly string[],
   llm: LlmProvider | null,
   opts: { timeoutMs?: number } = {},
 ): Promise<PhraseResult> {
   const fallback = fallbackText(items);
   if (!llm || items.length === 0) return { text: fallback, source: "template" };
+  const labeled: CopyFacts = Array.isArray(facts) ? { other: facts as readonly string[] } : (facts as CopyFacts);
   try {
     const out = await llm.parse({
       task: "phraseQuestions",
       tier: "fast",
       effort: "low",
       system: loadPrompt("phraseQuestions"),
-      user: JSON.stringify({ items: items.map((i) => i.text), knownFacts: facts }),
+      // The user's own name is never sent: the model cannot mistake it for the counterpart (live
+      // bug "Nice, you're meeting Marky"). namesUser() below still rejects it if it appears.
+      user: JSON.stringify({
+        items: items.map((i) => i.text),
+        counterpartName: labeled.counterpartName ?? null,
+        venue: labeled.venueText ?? null,
+        knownFacts: factValues({ ...labeled, userName: null }),
+      }),
       schema: PhraseOutput,
-      timeoutMs: opts.timeoutMs ?? 5000,
+      timeoutMs: opts.timeoutMs ?? COPY_TIMEOUT_MS,
       maxTokens: 300,
     });
     const text = out.text.trim();
-    const grounding = [...items.map((i) => i.text), ...facts];
+    const grounding = [...items.map((i) => i.text), ...factValues(facts)];
     const v = validateCopy(text, grounding);
     const questions = items.filter((i) => i.id !== "statement").length;
     const reasons = [...v.reasons];
     if (questions > 0 && !text.includes("?")) reasons.push("no_question");
+    if (namesUser(text, labeled)) reasons.push("names_user");
     if (reasons.length > 0) return { text: fallback, source: "template", rejected: reasons };
     return { text, source: "model" };
   } catch {

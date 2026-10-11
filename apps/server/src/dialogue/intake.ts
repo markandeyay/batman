@@ -8,14 +8,19 @@ import type { Plan, PlanType, User } from "../contracts.js";
 import { formatClock, formatDayTime } from "../geo/timezone.js";
 import { extractPlan, type ExtractOutcome, type PartialPlanFacts } from "../nlu/extractPlan.js";
 import { isAffirmative, isGo, isNegative } from "../nlu/rules.js";
-import { phraseQuestions, questionItem, type CopyItem, type QuestionId } from "../notify/copy.js";
+import { detectPlanEdit, isPureEdit, resolveTimeChoice } from "../nlu/timeEdit.js";
+import { phraseQuestions, questionItem, type CopyFacts, type CopyItem, type QuestionId } from "../notify/copy.js";
+import { chatTopic } from "../notify/smalltalk.js";
 import { durationText } from "../notify/templates.js";
 import { currentGuardianFor } from "./guardian.js";
 import { sendTemplate } from "./out.js";
+import { answerOffScript } from "./smalltalk.js";
 import type { DialoguePorts, DialogueState, PlanEditField, PlanFieldPatch } from "./ports.js";
 
 export const DEFAULT_DURATION_MIN: Record<PlanType, number> = { date: 120, marketplace: 20, viewing: 45, other: 60 };
 export const MAX_QUESTIONS = 3;
+/** A plan starting within this long skips optional questions. */
+export const SOON_MS = 30 * 60_000;
 
 export function graceMinFor(type: PlanType | null): number {
   return type === "marketplace" || type === "viewing" ? 5 : 15;
@@ -157,8 +162,11 @@ async function nextStep(ports: DialoguePorts, user: User, planId: string, state:
   if (!plan || !intake) return "intake_lost";
   const to = user.addressE164;
 
-  // Type default after one round.
-  if (!plan.type && intake.rounds > 0) {
+  // Starting within 30 min with time and place known: skip optional questions and confirm now
+  // (4.4.3 allows at most one follow-up; a plan that starts now should not be held up).
+  const soon = !!plan.startAt && plan.startAt.getTime() - ports.clock.now().getTime() <= SOON_MS && !!plan.venueText;
+  // Type default after one round (or right away when the plan starts soon).
+  if (!plan.type && (intake.rounds > 0 || soon)) {
     await ports.repo.updatePlanFields(plan.id, { type: "other" });
     plan.type = "other";
     if (!intake.defaultsUsed.includes("type")) intake.defaultsUsed.push("type");
@@ -170,7 +178,7 @@ async function nextStep(ports: DialoguePorts, user: User, planId: string, state:
 
   const questions = chooseQuestions(plan, intake);
   const missingRequired = !plan.startAt || !plan.venueText;
-  if (questions.length > 0 && (missingRequired || intake.rounds === 0)) {
+  if (questions.length > 0 && (missingRequired || (intake.rounds === 0 && !soon))) {
     const items: CopyItem[] = [];
     const reqIds: QuestionId[] = questions.filter((q) => q === "start_time" || q === "venue" || q === "type");
     const optIds = questions.filter((q) => !reqIds.includes(q));
@@ -179,7 +187,12 @@ async function nextStep(ports: DialoguePorts, user: User, planId: string, state:
       items.push({ id: "statement", text: durationStatement(plan.type, intake.durationMin) });
     }
     for (const q of optIds) items.push(questionItem(q));
-    const facts = [user.displayName, plan.venueText, plan.counterpartName, plan.counterpartSource].filter((x): x is string => !!x);
+    const facts: CopyFacts = {
+      userName: user.displayName,
+      counterpartName: plan.counterpartName,
+      counterpartSource: plan.counterpartSource,
+      venueText: plan.venueText,
+    };
     const phrased = await ports.typing(to, () => phraseQuestions(items, facts, ports.llm));
     await sendTemplate(ports, to, "intake_questions", { questionsText: phrased.text });
     intake.asked.push(...questions);
@@ -194,7 +207,9 @@ async function nextStep(ports: DialoguePorts, user: User, planId: string, state:
     const items = [!plan.startAt ? questionItem("start_time") : null, !plan.venueText ? questionItem("venue") : null].filter(
       (x): x is CopyItem => x !== null,
     );
-    await sendTemplate(ports, to, "intake_questions", { questionsText: items.map((i) => i.text).join(" ") });
+    const facts: CopyFacts = { userName: user.displayName, counterpartName: plan.counterpartName, venueText: plan.venueText };
+    const phrased = await ports.typing(to, () => phraseQuestions(items, facts, ports.llm));
+    await sendTemplate(ports, to, "intake_questions", { questionsText: phrased.text });
     intake.rounds += 1;
     await saveState(ports, user, { ...state, intake, pending: { kind: "questions", planId: plan.id } });
     return "intake_required_again";
@@ -222,8 +237,197 @@ async function sendConfirmation(ports: DialoguePorts, user: User, plan: Plan, st
     durationMin: duration,
     tip: tipFor(updated, intake),
   });
-  await saveState(ports, user, { ...state, intake, pending: { kind: "go", planId: plan.id, confirmMessageId: sent?.id ?? null } });
+  await saveState(ports, user, {
+    ...state,
+    intake,
+    pending: { kind: "go", planId: plan.id, confirmMessageId: sent?.id ?? null },
+    lastConfirmMessageId: sent?.id ?? null,
+  });
   return "intake_confirm";
+}
+
+/** Back to "waiting for GO" after a side question at the confirm step. */
+function confirmPending(state: DialogueState, planId: string): NonNullable<DialogueState["pending"]> {
+  return { kind: "go", planId, confirmMessageId: state.lastConfirmMessageId ?? null };
+}
+
+function currentDurationMin(plan: Plan, intake: Intake | null): number {
+  if (intake?.durationMin) return intake.durationMin;
+  if (plan.startAt && plan.endAt) return Math.round((plan.endAt.getTime() - plan.startAt.getTime()) / 60000);
+  return DEFAULT_DURATION_MIN[plan.type ?? "other"];
+}
+
+function sameTime(a: Date | null, b: Date | null): boolean {
+  return !!a && !!b && Math.abs(a.getTime() - b.getTime()) < 60000;
+}
+
+function sameText(a: string | null | undefined, b: string | null | undefined): boolean {
+  return (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+}
+
+/** A change to a DRAFT plan made at the confirm step. */
+interface DraftEdit {
+  startAt?: Date;
+  durationMin?: number;
+  venueText?: string;
+  counterpartName?: string;
+  transport?: Plan["transport"];
+  type?: PlanType;
+}
+
+const TRANSPORT_CHANGE: Record<string, string> = {
+  self_drive: "you're driving yourself",
+  rideshare: "you're taking a rideshare",
+  transit: "you're taking transit",
+  walk: "you're walking",
+  their_car: "they're driving you",
+};
+
+const TYPE_CHANGE: Record<PlanType, string> = { date: "a date", marketplace: "a Marketplace meetup", viewing: "an apartment viewing", other: "a meetup" };
+
+/**
+ * Apply an edit at the confirm step and re-confirm ONLY the changed fields (4.4.6):
+ * "Updated: Sat 11:30 PM. Reply GO to lock it in." Never the full summary again.
+ */
+async function applyDraftEdit(ports: DialoguePorts, user: User, plan: Plan, edit: DraftEdit, state: DialogueState): Promise<string> {
+  const tz = tzOf(ports, user);
+  const intake: Intake = state.intake && state.intake.planId === plan.id ? state.intake : newIntake(plan.id);
+  const duration = edit.durationMin ?? currentDurationMin(plan, intake);
+  const start = edit.startAt ?? plan.startAt;
+  const patch: PlanFieldPatch = {};
+  const changes: string[] = [];
+  if (edit.type) {
+    patch.type = edit.type;
+    patch.graceMin = graceMinFor(edit.type);
+    changes.push(TYPE_CHANGE[edit.type]);
+  }
+  if (edit.startAt) {
+    patch.startAt = edit.startAt;
+    changes.push(formatDayTime(edit.startAt, tz));
+  }
+  if (edit.durationMin !== undefined) {
+    intake.durationMin = edit.durationMin;
+    intake.defaultsUsed = intake.defaultsUsed.filter((d) => d !== "duration");
+    const end = start ? new Date(start.getTime() + edit.durationMin * 60000) : null;
+    changes.push(`about ${durationText(edit.durationMin)}${end ? `, back by about ${formatClock(end, tz)}` : ""}`);
+  }
+  if (start) patch.endAt = new Date(start.getTime() + duration * 60000);
+  if (edit.venueText) {
+    patch.venueText = edit.venueText.trim().slice(0, 200);
+    Object.assign(patch, await geocodeVenue(ports, user, patch.venueText));
+    changes.push(`at ${patch.venueText}`);
+  }
+  if (edit.counterpartName) {
+    patch.counterpartName = edit.counterpartName;
+    changes.push(`meeting ${edit.counterpartName}`);
+  }
+  if (edit.transport && edit.transport !== "unknown") {
+    patch.transport = edit.transport;
+    changes.push(TRANSPORT_CHANGE[edit.transport] ?? "ride noted");
+  }
+  await ports.repo.updatePlanFields(plan.id, patch);
+  const sent = await sendTemplate(ports, user.addressE164, "plan_updated", { changes, tz });
+  const id = sent?.id ?? state.lastConfirmMessageId ?? null;
+  await saveState(ports, user, { ...state, intake, pending: { kind: "go", planId: plan.id, confirmMessageId: id }, lastConfirmMessageId: id });
+  return "intake_updated";
+}
+
+/** Reply at the confirm step that is not GO: edit, question, chatter, or nothing new (4.4.6). */
+async function handleConfirmReply(ports: DialoguePorts, user: User, plan: Plan, msg: { id: string; text: string }, state: DialogueState): Promise<string> {
+  const tz = tzOf(ports, user);
+  const now = ports.clock.now();
+  const to = user.addressE164;
+  const intake: Intake | null = state.intake && state.intake.planId === plan.id ? state.intake : null;
+  const curDur = currentDurationMin(plan, intake);
+
+  // 1. Deterministic first pass (9.2): chrono in the user's timezone, shifts, durations.
+  const det = detectPlanEdit(msg.text, { now, tz, type: plan.type, startAt: plan.startAt });
+  if (det.time?.kind === "choice") {
+    await saveState(ports, user, {
+      ...state,
+      pending: { kind: "time_choice", planId: plan.id, options: det.time.options.map((o) => o.toISOString()), fromConfirm: true },
+    });
+    await sendTemplate(ports, to, "plan_time_choice_ask", { options: det.time.options, tz });
+    return "intake_time_choice";
+  }
+  const found = det.time !== null || det.durationMin !== null;
+  const edit: DraftEdit = {};
+  if (det.time?.kind === "at" && !sameTime(det.time.at, plan.startAt)) edit.startAt = det.time.at;
+  if (det.durationMin !== null && det.durationMin !== curDur) edit.durationMin = det.durationMin;
+  if (found && isPureEdit(msg.text)) {
+    if (Object.keys(edit).length > 0) return applyDraftEdit(ports, user, plan, edit, state);
+    await sendTemplate(ports, to, "plan_go_nudge");
+    return "intake_confirm_nudge";
+  }
+
+  // 2. The model, against the current plan (its time is re-checked with chrono, 9.2). A time the
+  //    deterministic pass already found wins over the model's.
+  const outcome = await ports.typing(to, () =>
+    extractPlan({ messages: [msg.text], partial: factsOf(plan, intake), now, tz, userName: user.displayName }, ports.llm),
+  );
+  const e = outcome.extraction;
+  const t = outcome.time;
+  if (!found && t.startAt && !sameTime(t.startAt, plan.startAt)) {
+    if (t.needsConfirmation || t.inPast) {
+      const proposed = (t.inPast ? t.suggestedStart : t.startAt) ?? t.startAt;
+      await saveState(ports, user, {
+        ...state,
+        pending: { kind: t.inPast ? "time_past" : "time_confirm", planId: plan.id, proposed: proposed.toISOString(), fromConfirm: true },
+      });
+      await sendTemplate(ports, to, t.inPast ? "plan_time_past_ask" : "plan_time_confirm_ask", { suggestedStart: proposed, tz });
+      return "intake_edit_time_confirm";
+    }
+    edit.startAt = t.startAt;
+  }
+  if (e.venueText && !sameText(e.venueText, plan.venueText)) edit.venueText = e.venueText;
+  if (det.durationMin === null && e.durationMin !== null && e.durationMin !== curDur) edit.durationMin = e.durationMin;
+  if (e.counterpartName && !sameText(e.counterpartName, plan.counterpartName)) edit.counterpartName = e.counterpartName;
+  if (e.transport && e.transport !== "unknown" && e.transport !== plan.transport) edit.transport = e.transport;
+  if (e.type && e.type !== plan.type && e.wantsToChange.includes("type")) edit.type = e.type;
+  if (Object.keys(edit).length > 0) return applyDraftEdit(ports, user, plan, edit, state);
+
+  // 3. A question or off-script message: brief answer in character, then the one-line nudge.
+  if (chatTopic(msg.text)) {
+    await answerOffScript(ports, user, to, plan, msg.text, "confirm");
+    return "intake_confirm_answer";
+  }
+  // 4. Nothing new: only the short nudge, never the full summary again.
+  await sendTemplate(ports, to, "plan_go_nudge");
+  return "intake_confirm_nudge";
+}
+
+/**
+ * Edits of an ARMED, AWAITING_GUARDIAN, or PRE_MEETUP plan found deterministically (9.2):
+ * times, shifts, and durations. Returns null when there is nothing deterministic to apply.
+ */
+async function armedDeterministicEdit(ports: DialoguePorts, user: User, plan: Plan, text: string, state: DialogueState): Promise<string | null> {
+  if (!isPureEdit(text)) return null; // other details too: the extractor path decides (edit or new plan)
+  const tz = tzOf(ports, user);
+  const det = detectPlanEdit(text, { now: ports.clock.now(), tz, type: plan.type, startAt: plan.startAt });
+  if (det.time?.kind === "choice") {
+    await saveState(ports, user, {
+      ...state,
+      pending: { kind: "time_choice", planId: plan.id, options: det.time.options.map((o) => o.toISOString()), fromConfirm: false },
+    });
+    await sendTemplate(ports, user.addressE164, "plan_time_choice_ask", { options: det.time.options, tz }, { planState: plan.state });
+    return "intake_time_choice";
+  }
+  const patch: PlanFieldPatch = {};
+  const fields: PlanEditField[] = [];
+  if (det.time?.kind === "at" && !sameTime(det.time.at, plan.startAt)) {
+    patch.startAt = det.time.at;
+    fields.push("startAt");
+  }
+  if (det.durationMin !== null && plan.startAt) {
+    const start = patch.startAt ?? plan.startAt;
+    const end = new Date(start.getTime() + det.durationMin * 60000);
+    if (!sameTime(end, plan.endAt)) {
+      patch.endAt = end;
+      fields.push("endAt");
+    }
+  }
+  if (fields.length === 0) return null;
+  return applyArmedEdit(ports, user, plan, patch, fields, state);
 }
 
 /** GO after a confirmation: tapback and arm (I1: the only path to an "arm" event). */
@@ -259,7 +463,7 @@ async function applyArmedEdit(
   const changes: string[] = [];
   if (patch.startAt && plan.startAt && plan.endAt) {
     const dur = plan.endAt.getTime() - plan.startAt.getTime();
-    full.endAt = new Date(patch.startAt.getTime() + dur);
+    full.endAt = patch.endAt ?? new Date(patch.startAt.getTime() + dur);
     changes.push(`now ${formatDayTime(patch.startAt, tz)}`);
     if (!fields.includes("endAt")) fields.push("endAt");
   }
@@ -303,16 +507,34 @@ export async function handleIntakeText(ports: DialoguePorts, user: User, plan: P
 
   // Pending yes/no contexts first.
   const p = state.pending;
-  if (p?.kind === "go" && plan && plan.id === p.planId && plan.state === "DRAFT" && isGo(msg.text)) {
-    return arm(ports, user, plan, msg.id, state);
+  if (p?.kind === "go" && plan && plan.id === p.planId && plan.state === "DRAFT") {
+    if (isGo(msg.text)) return arm(ports, user, plan, msg.id, state);
+    return handleConfirmReply(ports, user, plan, msg, state);
   }
   if ((p?.kind === "time_confirm" || p?.kind === "time_past") && plan && plan.id === p.planId) {
-    if (isAffirmative(msg.text)) return applyTime(ports, user, plan, new Date(p.proposed), { ...state, pending: null });
+    if (isAffirmative(msg.text)) {
+      if (p.fromConfirm && plan.state === "DRAFT") return applyDraftEdit(ports, user, plan, { startAt: new Date(p.proposed) }, state);
+      return applyTime(ports, user, plan, new Date(p.proposed), { ...state, pending: null });
+    }
     if (isNegative(msg.text)) {
       await sendTemplate(ports, user.addressE164, "ask_time_again");
-      await saveState(ports, user, { ...state, pending: null });
+      const back = p.fromConfirm && plan.state === "DRAFT" ? confirmPending(state, plan.id) : null;
+      await saveState(ports, user, { ...state, pending: back });
       return "intake_time_rejected";
     }
+  }
+  if (p?.kind === "time_choice" && plan && plan.id === p.planId) {
+    const options = p.options.map((o) => new Date(o));
+    const at = resolveTimeChoice(msg.text, options, { now, tz, type: plan.type, startAt: plan.startAt });
+    if (at) {
+      if (p.fromConfirm && plan.state === "DRAFT") return applyDraftEdit(ports, user, plan, { startAt: at }, state);
+      return applyArmedEdit(ports, user, plan, { startAt: at }, ["startAt"], { ...state, pending: null });
+    }
+    // Not an answer to the choice: handle the message normally.
+    const back = p.fromConfirm && plan.state === "DRAFT" ? confirmPending(state, plan.id) : null;
+    state.pending = back;
+    await saveState(ports, user, state);
+    if (back) return handleConfirmReply(ports, user, plan, msg, state);
   }
   if (p?.kind === "replace") {
     if (isAffirmative(msg.text)) {
@@ -330,10 +552,16 @@ export async function handleIntakeText(ports: DialoguePorts, user: User, plan: P
 
   if (!plan) return startNewPlan(ports, user, msg.text, tz, now);
 
-  const intake = state.intake && state.intake.planId === plan.id ? state.intake : plan.state === "DRAFT" ? newIntake(plan.id) : null;
+  if (plan.state !== "DRAFT") {
+    // 9.2: chrono and the edit rules first; the model only when they find nothing.
+    const r = await armedDeterministicEdit(ports, user, plan, msg.text, state);
+    if (r) return r;
+  }
+
+  const intake =state.intake && state.intake.planId === plan.id ? state.intake : plan.state === "DRAFT" ? newIntake(plan.id) : null;
   const history = intake ? [...intake.messages.slice(-3), msg.text] : [msg.text];
   const outcome = await ports.typing(user.addressE164, () =>
-    extractPlan({ messages: history, partial: factsOf(plan, intake), now, tz }, ports.llm),
+    extractPlan({ messages: history, partial: factsOf(plan, intake), now, tz, userName: user.displayName }, ports.llm),
   );
 
   if (plan.state !== "DRAFT") {
@@ -371,6 +599,11 @@ export async function handleIntakeText(ports: DialoguePorts, user: User, plan: P
       fields.push("transport");
     }
     if (fields.length === 0) {
+      if (chatTopic(msg.text)) {
+        // Small talk or a question while armed: answer in character, then one line of status.
+        await answerOffScript(ports, user, user.addressE164, plan, msg.text, plan.state === "AWAITING_GUARDIAN" ? "awaiting" : "armed");
+        return "armed_smalltalk";
+      }
       await sendTemplate(ports, user.addressE164, "status", { plan, state: plan.state, tz }, { planState: plan.state });
       return "intake_status";
     }
@@ -379,15 +612,41 @@ export async function handleIntakeText(ports: DialoguePorts, user: User, plan: P
 
   // DRAFT
   const live = intake ?? newIntake(plan.id);
+  if (chatTopic(msg.text) && nothingNew(outcome, plan)) {
+    // Off-script while answering follow-ups: answer, then re-ask only what is still missing.
+    const missing = [!plan.startAt ? questionItem("start_time") : null, !plan.venueText ? questionItem("venue") : null].filter(
+      (x): x is CopyItem => x !== null,
+    );
+    if (missing.length > 0) {
+      await answerOffScript(ports, user, user.addressE164, plan, msg.text, "questions", { steer: { questionsText: missing.map((m) => m.text).join(" ") } });
+      return "intake_smalltalk";
+    }
+    await answerOffScript(ports, user, user.addressE164, plan, msg.text, "questions", { noSteer: true });
+  }
   live.messages = [...live.messages, msg.text].slice(-5);
   return applyToDraft(ports, user, plan, outcome, { ...state, intake: live });
 }
 
+/** The extraction adds nothing to the plan (an off-script reply during intake). */
+function nothingNew(o: ExtractOutcome, plan: Plan): boolean {
+  const e = o.extraction;
+  if (o.time.startAt && !sameTime(o.time.startAt, plan.startAt)) return false;
+  if (e.venueText && !sameText(e.venueText, plan.venueText)) return false;
+  if (e.counterpartName && !sameText(e.counterpartName, plan.counterpartName)) return false;
+  if (e.type && e.type !== plan.type) return false;
+  if (e.durationMin !== null) return false;
+  if (e.transport && e.transport !== "unknown" && e.transport !== plan.transport) return false;
+  return true;
+}
+
 async function startNewPlan(ports: DialoguePorts, user: User, text: string, tz: string, now: Date): Promise<string> {
-  const outcome = await ports.typing(user.addressE164, () => extractPlan({ messages: [text], partial: null, now, tz }, ports.llm));
-  if (!extractedSomething(outcome)) {
-    await sendTemplate(ports, user.addressE164, "help");
-    return "intake_nothing";
+  const outcome = await ports.typing(user.addressE164, () => extractPlan({ messages: [text], partial: null, now, tz, userName: user.displayName }, ports.llm));
+  const e = outcome.extraction;
+  const planContent = !!(e.type || e.venueText || e.counterpartName);
+  if (!extractedSomething(outcome) || (chatTopic(text) && !planContent)) {
+    // No plan in it: small talk with a hint of what Batman does (4.1, 9.4).
+    await answerOffScript(ports, user, user.addressE164, null, text, "idle");
+    return "idle_smalltalk";
   }
   const cur = await currentGuardianFor(ports, user.id);
   const plan = await ports.repo.createDraftPlan(user.id, { guardianId: cur?.guardian.id ?? null }, now);

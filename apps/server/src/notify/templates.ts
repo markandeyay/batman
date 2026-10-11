@@ -327,6 +327,16 @@ const CODEWORD_REASONS: Record<string, string> = {
   too_similar: "Those are too close to each other, I might mix them up. Pick two that look different?",
 };
 
+/** One-at-a-time entry: the 4.2 rule in a few words, no format example. */
+const CODEWORD_SHORT_REASONS: Record<string, string> = {
+  format: "I didn't catch that.",
+  word_count: "Keep it to 1 to 3 words.",
+  too_short: "It needs at least 5 letters so it can't go off by accident.",
+  common_word: "That one's too common, you might text it by accident.",
+  same: "It needs to be different from your exit word.",
+  too_similar: "That's too close to your exit word, I might mix them up.",
+};
+
 const GUARDIAN_INVALID_REASONS: Record<string, string> = {
   no_number: "I couldn't find a phone number there. Send their name and number, or share their contact card.",
   invalid: "That number doesn't look right. Can you double check it?",
@@ -334,6 +344,29 @@ const GUARDIAN_INVALID_REASONS: Record<string, string> = {
   own_number: "That's your own number. Who else should I contact if you might need help?",
   stopped: "That person asked me not to text them. Want to add someone else?",
   unreachable: "I can't reach that number right now. Want to try someone else?",
+};
+
+/** Fixed small talk answers (fallback for the LLM path; never sent in DISCREET_STATES). */
+const SMALLTALK: Record<string, (c: Ctx) => string> = {
+  who: () => "I'm Batman, an automated assistant. I quietly look out for you when you meet someone new.",
+  what: () => "Tell me who, where, and when before you meet someone new. If something seems off and you don't answer me, I text your backup.",
+  who_texted: (c) => `Only ${c.guardian}, and only if something seems off and you don't answer me.`,
+  thanks: () => "Anytime.",
+  greeting: () => "Hey!",
+  how_are_you: () => "Doing well. Night owl hours are my favorite.",
+  laugh: () => "Ha.",
+  complaint: () => "Fair. Tell me what you meant and I'll fix it.",
+};
+
+/** One line that steers back to the pending step. */
+const STEER: Record<string, (c: Ctx) => string> = {
+  ask_name: () => "Anyway, what should I call you?",
+  ask_guardian: () => "Anyway, who should be your backup? Send their name and number, or share their contact card.",
+  questions: (c) => clean(c.p.questionsText) ?? "So, what time and where?",
+  confirm: () => "Reply GO when you're ready, or tell me what to change.",
+  idle: () => "Whenever you're meeting someone new, text me who, where, and when.",
+  armed: (c) => `You're locked in for ${c.dayTime(c.startAt)}. Text me if anything changes.`,
+  awaiting: (c) => `Still waiting on ${c.guardian} to say yes. I'll lock it in the moment they do.`,
 };
 
 const DISCREET: readonly PlanState[] = ["ACTIVE", "OVERTIME", "CHECKING", "ESCALATED", "CLOSING"];
@@ -615,6 +648,41 @@ const T: Record<TemplateId, Variant[]> = {
   plan_expired_unarmed: [
     (c) => `Your plan for ${c.dayTime(c.startAt)} expired because ${c.guardian} never said yes to being your backup. Text me if you want to set up another one.`,
   ],
+
+  // ---------- confirm step (4.4.6): only the changed fields, never the full summary again ----------
+  plan_updated: [
+    (c) => {
+      const ch = (c.p.changes ?? []).filter((x) => x.trim() !== "");
+      return `Updated${ch.length > 0 ? `: ${ch.join(", ")}` : ""}. Reply GO to lock it in.`;
+    },
+  ],
+  plan_go_nudge: [() => "Reply GO when you're ready, or tell me what to change."],
+  plan_time_choice_ask: [
+    (c) => {
+      const [a, b] = (c.p.options ?? []).map((o) => c.date(o));
+      return a && b ? `Just to be sure, ${c.dayTime(a)} or ${c.dayTime(b)}?` : "Just to be sure, what time is it?";
+    },
+  ],
+
+  // ---------- small talk outside windows (4.1, 9.4): fallback when the model is unavailable ----------
+  smalltalk_reply: [(c) => SMALLTALK[c.p.reasonId ?? ""]?.(c) ?? "Got it."],
+  smalltalk_steer: [(c) => (STEER[c.p.step ?? ""] ?? STEER.idle!)(c)],
+
+  // ---------- code word entry (4.2): one at a time, no format lecture ----------
+  onb_codeword_ask: [
+    (c) => {
+      const reason = c.p.reasonId ? CODEWORD_SHORT_REASONS[c.p.reasonId] : null;
+      if (c.p.step === "alert") {
+        return reason ? `${reason} What's your alert word?` : `Got it. And your alert word? That's the one that quietly texts ${c.guardian} where you are.`;
+      }
+      return reason
+        ? `${reason} What's your exit word?`
+        : "Let's do them one at a time. What's your exit word? That's the one that makes your phone ring so you have an excuse to leave.";
+    },
+  ],
+  onb_codewords_order: [
+    (c) => `Got it: "${clean(c.p.exitWord) ?? "the first one"}" is your exit word and "${clean(c.p.alertWord) ?? "the second one"}" is your alert word. Want them swapped? Text "change code words" anytime.`,
+  ],
 };
 
 /** Templates sent to the guardian (not to the user). */
@@ -654,6 +722,13 @@ const PRE_WINDOW_ONLY: readonly TemplateId[] = [
   "no_plan_distress",
   "usr_backup_unreachable_explain",
   "plan_expired_unarmed",
+  "plan_updated",
+  "plan_go_nudge",
+  "plan_time_choice_ask",
+  "smalltalk_reply",
+  "smalltalk_steer",
+  "onb_codeword_ask",
+  "onb_codewords_order",
 ];
 
 /**
@@ -674,7 +749,7 @@ export function canSendInState(id: TemplateId, state: PlanState | null): boolean
 }
 
 /** Param keys that carry text the user (or a geocoder) supplied; dropped for the value-free variant (M6). */
-const VALUE_KEYS = ["venueText", "counterpartName", "counterpartSource", "address", "changes", "tip", "questionsText"] as const;
+const VALUE_KEYS = ["venueText", "counterpartName", "counterpartSource", "address", "changes", "tip", "questionsText", "exitWord", "alertWord"] as const;
 
 /** M6: the same params with every user-supplied value removed (also from the embedded plan). */
 export function valueFreeParams(params: TemplateParams | Record<string, unknown>): TemplateParams {

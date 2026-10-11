@@ -411,7 +411,7 @@ async function handleRule(
         await sendTemplate(ports, to, "codewords_busy", {}, ctx);
         return "codewords_busy";
       }
-      await ports.repo.setDialogueState(user.id, { ...ds, pending: { kind: "codewords" } });
+      await ports.repo.setDialogueState(user.id, { ...ds, pending: { kind: "codewords" }, codewordDraft: null });
       {
         const cur = await currentGuardianFor(ports, user.id);
         await sendTemplate(ports, to, "onb_ask_codewords", { guardianName: cur?.guardian.displayName ?? null }, ctx);

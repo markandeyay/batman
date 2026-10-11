@@ -12,6 +12,7 @@ import { describeError, last4 } from "./gateway/errors.js";
 import { GatewayExecutor, maskForStorage, type Render } from "./gateway/executor.js";
 import { createImessageClient, type ImessageClient } from "./gateway/imessageAdvanced.js";
 import type { NormalizedInbound } from "./gateway/normalize.js";
+import { markInboundRead, type MarkReadApi } from "./gateway/readReceipts.js";
 import { InboundLoop, imessageResolver, installSignalHandlers, startSpectrum, toSpaceHandle, type InboundHandler, type LoopMessage, type SpectrumApp } from "./gateway/spectrum.js";
 import { TERMINAL_COMMANDS, TerminalBridge, TerminalCallService } from "./gateway/terminal.js";
 import { FindMyLocationSource, probeShare, type LocationsApi } from "./location/findmy.js";
@@ -343,6 +344,8 @@ export function createApp(env: Env, deps: AppDeps = {}): App {
         ...(terminal ? { intercept: (m: Parameters<TerminalBridge["intercept"]>[0], space: unknown) => terminal.intercept(m, space) } : {}),
         onAccepted: (from, space, m: LoopMessage) => {
           channel.rememberInbound(m.id, m, m.parentId);
+          // Read receipt (best effort, never blocks): the user sees "Read" right away.
+          if (m.platform !== "terminal") markInboundRead(advanced?.im as unknown as MarkReadApi | null, from, logger);
           if (m.platform !== "terminal" && space && typeof (space as { send?: unknown }).send === "function" && (space as { id?: unknown }).id) {
             // Reuse the inbound space for replies (no space.create round trip).
             channel.rememberSpace(from, toSpaceHandle(space as never, "imessage"));

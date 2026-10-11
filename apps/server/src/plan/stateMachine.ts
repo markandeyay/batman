@@ -259,8 +259,9 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     when: (p) => requiredFieldsPresent(p),
     run: (tx) => {
       tx.setState("AWAITING_GUARDIAN");
-      tx.send("user", "plan_awaiting_guardian", planParams(tx.p));
-      // X4: a plan that never gets a guardian expires at its start (EXPIRED, 6.1) and says so.
+      // Told once, plainly: not locked in until the backup says yes; locks in the moment they do.
+      tx.send("user", "plan_awaiting_guardian", { ...planParams(tx.p), soon: tx.p.startAt!.getTime() - T_MINUS_MS <= tx.now.getTime() });
+      // X4 (revised after the live test): waits until the planned END, then expires and says so.
       tx.schedule("draft_expire", awaitingExpiryAt(tx));
     },
   }),
@@ -278,8 +279,8 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     on: "guardian_accepted",
     when: (_p, _e, ctx) => guardianAcceptedNow(true, ctx),
     run: (tx) => {
-      armPlan(tx);
       tx.send("user", "plan_armed_now", planParams(tx.p));
+      armLate(tx);
     },
   }),
   row({
@@ -348,7 +349,11 @@ export const TRANSITIONS: readonly TransitionRow[] = [
         return;
       }
       if (tx.now.getTime() + LOC_POLL_MS <= tx.p.locRequestedAt!.getTime() + LOC_POLL_WINDOW_MS) tx.schedule("loc_poll", tx.at(LOC_POLL_MS));
-      else tx.audit("loc_poll_gave_up");
+      else {
+        tx.audit("loc_poll_gave_up");
+        // Late arm (X4 revised): the meetup already started, so no share now means time-only.
+        if (LIVE.includes(tx.p.state) && tx.p.locationMode === "findmy" && !tx.p.flags.timeOnlyNoticeSent) switchToTimeOnly(tx);
+      }
     },
   }),
   row({
@@ -678,7 +683,7 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     when: (p, _e, ctx) =>
       p.state === "DRAFT"
         ? ctx.now.getTime() >= p.createdAt.getTime() + DRAFT_TTL_MS
-        : ctx.now.getTime() >= (p.startAt?.getTime() ?? p.endAt?.getTime() ?? p.createdAt.getTime() + DRAFT_TTL_MS),
+        : ctx.now.getTime() >= (awaitingExpiry(p)?.getTime() ?? p.createdAt.getTime() + DRAFT_TTL_MS),
     run: (tx) => {
       // X4: tell the user once that the unarmed plan expired (a DRAFT expires quietly).
       if (tx.p.state === "AWAITING_GUARDIAN") tx.send("user", "plan_expired_unarmed", planParams(tx.p));
@@ -848,11 +853,42 @@ function armPlan(tx: Tx): void {
   if (start - now > RECONFIRM_THRESHOLD_MS) tx.schedule("reconfirm", new Date(start - RECONFIRM_BEFORE_MS));
 }
 
-/** X4: an AWAITING_GUARDIAN plan expires at its start (or end, or 12 h for an undated plan). */
+/**
+ * X4 (revised): an AWAITING_GUARDIAN plan expires at its planned END (or start, or 12 h for an
+ * undated plan), so a guardian who accepts late can still arm it.
+ */
 function awaitingExpiryAt(tx: Tx): Date {
-  const p = tx.p;
-  const t = p.startAt ?? p.endAt;
+  const t = awaitingExpiry(tx.p);
   return t ? new Date(Math.max(tx.now.getTime(), t.getTime())) : tx.at(DRAFT_TTL_MS);
+}
+
+function awaitingExpiry(p: EnginePlan): Date | null {
+  const t = p.endAt ?? p.startAt;
+  return t ? new Date(t.getTime()) : null;
+}
+
+/**
+ * Guardian accepted an AWAITING_GUARDIAN plan. Before T-30: arm normally. Within T-30: straight
+ * to PRE_MEETUP with the Find My request. Start already passed (but before the end): straight to
+ * ACTIVE, with the share requested now and the usual 15 min poll before going time-only.
+ */
+function armLate(tx: Tx): void {
+  const p = tx.p;
+  const now = tx.now.getTime();
+  const start = p.startAt!.getTime();
+  if (start - T_MINUS_MS > now) {
+    armPlan(tx);
+    return;
+  }
+  p.highVigilance = computeHighVigilance(p);
+  tx.cancel(["draft_expire"]);
+  tx.setState("PRE_MEETUP");
+  requestLocation(tx);
+  if (start > now) {
+    tx.schedule("start", p.startAt!);
+    return;
+  }
+  startActive(tx, { shareJustRequested: true });
 }
 
 /**
@@ -944,12 +980,13 @@ function switchToTimeOnly(tx: Tx): void {
   }
 }
 
-function startActive(tx: Tx): void {
+function startActive(tx: Tx, opts: { shareJustRequested?: boolean } = {}): void {
   const p = tx.p;
   tx.setState("ACTIVE");
   // 4.4.2 notifyGuardianStartEnd: plan details only, no location (I4); send() skips an unaccepted guardian (I1).
   if (p.notifyGuardianStartEnd) tx.send("guardian", "gdn_plan_started", planParams(p));
-  if (p.locationMode === "findmy" && !p.shareConfirmedAt) switchToTimeOnly(tx);
+  // A share requested this instant (late arm, X4 revised) gets the 15 min poll window first.
+  if (p.locationMode === "findmy" && !p.shareConfirmedAt && !opts.shareJustRequested) switchToTimeOnly(tx);
   scheduleEndGrace(tx);
   if (p.type === "date" && p.firstTimeInPerson !== false && p.startAt && p.endAt && !p.flags.midCheckSent) {
     const durMs = p.endAt.getTime() - p.startAt.getTime();

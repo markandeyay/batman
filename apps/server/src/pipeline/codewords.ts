@@ -235,8 +235,11 @@ export function validateCodeWords(exit: string, alert: string): CodeWordValidati
   return { ok: true, codeWords: { exit: ej, alert: aj } };
 }
 
-const LEAD_FILLER = new Set(["word", "words", "is", "will", "be", "should", "my", "the", "code", "phrase", "as", "to", "s"]);
-const TRAIL_FILLER = new Set(["and", "then", "plus", "also", "my", "the"]);
+const LEAD_FILLER = new Set([
+  "word", "words", "is", "will", "be", "should", "my", "the", "code", "phrase", "as", "to", "s", "its", "it", "id",
+  "make", "use", "lets", "um", "uh", "hmm", "so", "and", "then", "maybe",
+]);
+const TRAIL_FILLER = new Set(["and", "then", "plus", "also", "my", "the", "is", "as", "word", "words", "please", "pls", "code", "be", "will", "would"]);
 
 function trimFiller(tokens: string[]): string[] {
   let s = 0;
@@ -246,13 +249,28 @@ function trimFiller(tokens: string[]): string[] {
   return tokens.slice(s, e);
 }
 
+/** What a code word reply contained. positional: no labels, so the order was assumed (exit, alert). */
+export interface CodeWordParts {
+  exit: string | null;
+  alert: string | null;
+  positional: boolean;
+}
+
+/** Phrase for a lone keyword: the words after it, or before it ("pineapple is my exit word"). */
+function aroundKeyword(toks: string[], i: number): string[] {
+  const after = trimFiller(toks.slice(i + 1));
+  if (after.length > 0) return after;
+  return trimFiller(toks.slice(0, i));
+}
+
 /**
- * Parse the user's code word reply. Accepts "exit pineapple alert blue moon",
- * "exit: pineapple / alert: blue moon", "alert blue moon, exit pineapple",
- * "1) pineapple 2) blue moon", or two comma/line separated phrases in exit, alert order.
- * Returns null when it cannot tell which is which.
+ * Parse a code word reply (spec 4.2). Accepts "exit pineapple alert blue moon",
+ * "exit: pineapple, alert: blue moon", two lines, "1) pineapple 2) blue moon",
+ * "pineapple and blue moon" or "pineapple, blue moon" (exit first, positional), and a single
+ * labeled word ("exit word is pineapple"). Punctuation and quotes are ignored. Returns null when
+ * nothing usable was found. Deterministic; never logs or forwards the words (I8).
  */
-export function parseCodeWordReply(text: string): CodeWords | null {
+export function parseCodeWordParts(text: string): CodeWordParts | null {
   const toks = tokenize(text);
   const ei = toks.indexOf("exit");
   const ai = toks.indexOf("alert");
@@ -261,22 +279,43 @@ export function parseCodeWordReply(text: string): CodeWords | null {
     const alertToks = ai < ei ? toks.slice(ai + 1, ei) : toks.slice(ai + 1);
     const ex = trimFiller(exitToks);
     const al = trimFiller(alertToks);
-    if (ex.length === 0 || al.length === 0) return null;
-    return { exit: ex.join(" "), alert: al.join(" ") };
+    if (ex.length === 0 && al.length === 0) return null;
+    return { exit: ex.length > 0 ? ex.join(" ") : null, alert: al.length > 0 ? al.join(" ") : null, positional: false };
   }
-  if (ei >= 0 || ai >= 0) return null;
+  if (ei >= 0 || ai >= 0) {
+    const words = aroundKeyword(toks, ei >= 0 ? ei : ai);
+    if (words.length === 0) return null;
+    return ei >= 0 ? { exit: words.join(" "), alert: null, positional: false } : { exit: null, alert: words.join(" "), positional: false };
+  }
   const numbered = /1\s*[).:-]\s*([\s\S]+?)\s*2\s*[).:-]\s*([\s\S]+)/.exec(text);
   if (numbered) {
     const ex = tokenize(numbered[1]!);
     const al = tokenize(numbered[2]!);
-    if (ex.length > 0 && al.length > 0) return { exit: ex.join(" "), alert: al.join(" ") };
+    if (ex.length > 0 && al.length > 0) return { exit: ex.join(" "), alert: al.join(" "), positional: false };
   }
-  const parts = text
-    .split(/[\n,;/]+/)
-    .map((p) => tokenize(p))
-    .filter((p) => p.length > 0);
-  if (parts.length === 2) return { exit: parts[0]!.join(" "), alert: parts[1]!.join(" ") };
+  for (const sep of [/[\n,;/]+/, /\s+(?:and|then|&|plus)\s+|\s*&\s*/i]) {
+    const parts = text
+      .split(sep)
+      .map((p) => trimFiller(tokenize(p)))
+      .filter((p) => p.length > 0);
+    if (parts.length === 2) return { exit: parts[0]!.join(" "), alert: parts[1]!.join(" "), positional: true };
+  }
   return null;
+}
+
+/**
+ * Parse the user's code word reply into both words, or null when it cannot tell which is which
+ * (see parseCodeWordParts for the accepted forms).
+ */
+export function parseCodeWordReply(text: string): CodeWords | null {
+  const p = parseCodeWordParts(text);
+  return p && p.exit && p.alert ? { exit: p.exit, alert: p.alert } : null;
+}
+
+/** One code word sent on its own ("it's blue moon", "exit: pineapple"). Null when empty. */
+export function parseSingleCodePhrase(text: string): string | null {
+  const toks = trimFiller(tokenize(text).filter((t) => t !== "exit" && t !== "alert"));
+  return toks.length > 0 ? toks.join(" ") : null;
 }
 
 /** Replace code words in a message body with "[code]" for storage (spec 12). */
