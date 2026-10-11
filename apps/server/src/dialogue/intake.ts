@@ -599,6 +599,11 @@ export async function handleIntakeText(ports: DialoguePorts, user: User, plan: P
       fields.push("transport");
     }
     if (fields.length === 0) {
+      if (chatTopic(msg.text)) {
+        // Small talk or a question while armed: answer in character, then one line of status.
+        await answerOffScript(ports, user, user.addressE164, plan, msg.text, plan.state === "AWAITING_GUARDIAN" ? "awaiting" : "armed");
+        return "armed_smalltalk";
+      }
       await sendTemplate(ports, user.addressE164, "status", { plan, state: plan.state, tz }, { planState: plan.state });
       return "intake_status";
     }
@@ -607,15 +612,41 @@ export async function handleIntakeText(ports: DialoguePorts, user: User, plan: P
 
   // DRAFT
   const live = intake ?? newIntake(plan.id);
+  if (chatTopic(msg.text) && nothingNew(outcome, plan)) {
+    // Off-script while answering follow-ups: answer, then re-ask only what is still missing.
+    const missing = [!plan.startAt ? questionItem("start_time") : null, !plan.venueText ? questionItem("venue") : null].filter(
+      (x): x is CopyItem => x !== null,
+    );
+    if (missing.length > 0) {
+      await answerOffScript(ports, user, user.addressE164, plan, msg.text, "questions", { steer: { questionsText: missing.map((m) => m.text).join(" ") } });
+      return "intake_smalltalk";
+    }
+    await answerOffScript(ports, user, user.addressE164, plan, msg.text, "questions", { noSteer: true });
+  }
   live.messages = [...live.messages, msg.text].slice(-5);
   return applyToDraft(ports, user, plan, outcome, { ...state, intake: live });
 }
 
+/** The extraction adds nothing to the plan (an off-script reply during intake). */
+function nothingNew(o: ExtractOutcome, plan: Plan): boolean {
+  const e = o.extraction;
+  if (o.time.startAt && !sameTime(o.time.startAt, plan.startAt)) return false;
+  if (e.venueText && !sameText(e.venueText, plan.venueText)) return false;
+  if (e.counterpartName && !sameText(e.counterpartName, plan.counterpartName)) return false;
+  if (e.type && e.type !== plan.type) return false;
+  if (e.durationMin !== null) return false;
+  if (e.transport && e.transport !== "unknown" && e.transport !== plan.transport) return false;
+  return true;
+}
+
 async function startNewPlan(ports: DialoguePorts, user: User, text: string, tz: string, now: Date): Promise<string> {
   const outcome = await ports.typing(user.addressE164, () => extractPlan({ messages: [text], partial: null, now, tz, userName: user.displayName }, ports.llm));
-  if (!extractedSomething(outcome)) {
-    await sendTemplate(ports, user.addressE164, "help");
-    return "intake_nothing";
+  const e = outcome.extraction;
+  const planContent = !!(e.type || e.venueText || e.counterpartName);
+  if (!extractedSomething(outcome) || (chatTopic(text) && !planContent)) {
+    // No plan in it: small talk with a hint of what Batman does (4.1, 9.4).
+    await answerOffScript(ports, user, user.addressE164, null, text, "idle");
+    return "idle_smalltalk";
   }
   const cur = await currentGuardianFor(ports, user.id);
   const plan = await ports.repo.createDraftPlan(user.id, { guardianId: cur?.guardian.id ?? null }, now);

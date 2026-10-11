@@ -47,7 +47,9 @@ export function chatTopic(text: string): ChatTopic | null {
   if (/\bhow (are|r) (you|u)\b|\bhow'?s it going\b|\bwyd\b|\bwhat'?s up\b/.test(n)) return "how_are_you";
   if (/^(lol|lmao|lmfao|haha+|hehe+|rofl)\b|^[\u{1F602}\u{1F923}]+$/u.test(n)) return "laugh";
   if (/\b(annoying|stupid|dumb|useless|broken|not working|doesn'?t work|not listening|ignor\w*|wtf|ugh)\b/.test(n)) return "complaint";
-  if (/\?\s*$/.test(n) || /^(who|what|why|how|when|where|can|could|do|does|is|are|will|would|should|wait)\b/.test(n)) return "question";
+  if (/\?\s*$/.test(n)) return "question";
+  // A question word without "?" needs a few words ("Will" alone is a name).
+  if (/^(who|what|why|how|when|where|can|could|do|does|is|are|will|would|should|wait)\b/.test(n) && n.split(/\s+/).length >= 3) return "question";
   return null;
 }
 

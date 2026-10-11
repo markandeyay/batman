@@ -3,9 +3,11 @@
 // (I15) are sent before the user can plan. No age is ever asked or stored (I15).
 import type { E164, InboundMessage, User } from "../contracts.js";
 import { parseCodeWordParts, parseSingleCodePhrase, tokenize, validateCodePhrase, validateCodeWords } from "../pipeline/codewords.js";
+import { chatTopic } from "../notify/smalltalk.js";
 import { captureGuardian, currentGuardianFor } from "./guardian.js";
 import { sendTemplate } from "./out.js";
 import type { DialoguePorts, DialogueState } from "./ports.js";
+import { answerOffScript } from "./smalltalk.js";
 
 export const ONBOARDING_STEPS = ["ask_name", "ask_guardian", "ask_codewords", "done"] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
@@ -152,6 +154,11 @@ export async function handleOnboarding(ports: DialoguePorts, user: User, msg: In
   const c = msg.content;
   switch (step) {
     case "ask_name": {
+      // Off-script ("who are you?", "hey"): answer in character, then ask the name again (4.1).
+      if (c.kind === "text" && chatTopic(c.text)) {
+        await answerOffScript(ports, null, to, null, c.text, "ask_name");
+        return "onboarding_smalltalk";
+      }
       const name = c.kind === "text" ? parseName(c.text) : null;
       if (!name) {
         await sendTemplate(ports, to, "onb_ask_name");
@@ -165,6 +172,10 @@ export async function handleOnboarding(ports: DialoguePorts, user: User, msg: In
       if (c.kind === "voice_unavailable") {
         await sendTemplate(ports, to, "voice_unavailable");
         return "onboarding_voice";
+      }
+      if (c.kind === "text" && !/\d/.test(c.text) && chatTopic(c.text)) {
+        await answerOffScript(ports, user, to, null, c.text, "ask_guardian");
+        return "onboarding_smalltalk";
       }
       const ok = await captureGuardian(ports, user, c);
       if (!ok) return "onboarding_guardian_invalid";
