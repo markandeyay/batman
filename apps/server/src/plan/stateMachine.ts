@@ -432,7 +432,7 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     spec: "6.2 ESCALATED + user OK -> ACTIVE; 5.3 notify guardian",
     from: ["ESCALATED"],
     on: "user_reply",
-    run: (tx, e) => onEscalatedReply(tx, e.label, e.messageId),
+    run: (tx, e) => onEscalatedReply(tx, e.label, e.messageId, e.okNow === true),
   }),
   row({
     id: "reaction",
@@ -443,7 +443,7 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     run: (tx, e) => {
       const label = reactionLabel(e.emoji);
       if (tx.p.state === "ACTIVE") onActiveReply(tx, label, null);
-      else if (tx.p.state === "ESCALATED") onEscalatedReply(tx, label, null);
+      else if (tx.p.state === "ESCALATED") onEscalatedReply(tx, label, null, false);
       else onLadderReply(tx, label, null);
     },
   }),
@@ -1123,8 +1123,18 @@ function onActiveReply(tx: Tx, label: ReplyLabel, messageId: string | null): voi
   tx.audit("ambiguous_reply");
 }
 
-function onEscalatedReply(tx: Tx, label: ReplyLabel, messageId: string | null): void {
+/** C2 (I7, 6.7 step 4): alert-word and distress escalations end only on deterministic replies. */
+function silentEscalation(p: EnginePlan): boolean {
+  return p.escalationReason?.kind === "alert_word" || p.escalationReason?.kind === "distress";
+}
+
+function onEscalatedReply(tx: Tx, label: ReplyLabel, messageId: string | null, okNow: boolean): void {
   const p = tx.p;
+  if (silentEscalation(p) && !okNow) {
+    // A classifier OK or a tapback may be coerced; only "I'm okay now", home, done, or cancel count.
+    tx.audit("escalated_reply_ignored", { label });
+    return;
+  }
   if (label === "OK") {
     deescalate(tx, messageId);
     return;
@@ -1170,7 +1180,11 @@ function resumeActive(tx: Tx): void {
 
 function onExtend(tx: Tx, minutes: number): void {
   const p = tx.p;
-  if (p.state === "ESCALATED") {
+  if (p.state === "ESCALATED" && silentEscalation(p)) {
+    // C2: "+30" during an alert-word or distress escalation moves the end time only.
+    extendEnd(tx, minutes, false);
+    tx.audit("extend_during_silent_escalation");
+  } else if (p.state === "ESCALATED") {
     deescalate(tx, null);
     extendEnd(tx, minutes, false);
   } else if (p.state === "OVERTIME" || p.state === "CHECKING") {

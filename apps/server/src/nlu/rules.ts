@@ -154,6 +154,16 @@ export function isHome(text: string): boolean {
   );
 }
 
+/**
+ * "I'm okay now" (6.7 step 4): the only reply, besides home, done, and cancel, that ends an
+ * alert-word or distress escalation (C2). Deterministic, whole message, no negation.
+ */
+export function isOkNow(text: string): boolean {
+  let n = norm(text);
+  for (let i = 0; i < 3; i++) n = n.replace(/ (lol|haha|thanks|thank you|thx|ty|really|promise|i promise|x|xx)$/, "");
+  return /^(im|i am|i m) (ok|okay|alright|all right|fine|good) now$/.test(n);
+}
+
 export function isDone(text: string): boolean {
   const n = stripTrailingFiller(norm(text));
   if (DONE_EXACT.has(n)) return true;

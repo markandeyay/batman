@@ -502,8 +502,8 @@ describe("replies in ACTIVE and ESCALATED", () => {
     expect(sched(r.fx, "risk_tick")).toHaveLength(1);
   });
 
-  it("ESCALATED by alert word + OK: guardian told, user gets only a tapback (6.7 step 4)", () => {
-    const r = apply(escalated({ escalationReason: { kind: "alert_word" } }), { type: "user_reply", label: "OK", messageId: "u-1" }, ctxAt(at(50)));
+  it("ESCALATED by alert word + deterministic okNow (C2): guardian told, user gets only a tapback (6.7 step 4)", () => {
+    const r = apply(escalated({ escalationReason: { kind: "alert_word" } }), { type: "user_reply", label: "OK", messageId: "u-1", okNow: true }, ctxAt(at(50)));
     expect(sends(r.fx)).toEqual(["guardian:gdn_user_ok_now"]);
     expect(r.fx[1]).toMatchObject({ kind: "react" });
   });

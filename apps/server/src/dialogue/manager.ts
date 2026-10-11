@@ -11,7 +11,7 @@
 import type { DecoyCaller, E164, InboundMessage, Plan, User } from "../contracts.js";
 import { DECOY_CALLERS, DISCREET_STATES, TERMINAL_STATES, WINDOW_STATES } from "../contracts.js";
 import { classifyReply } from "../nlu/classifyReply.js";
-import { isAffirmative, isNegative, matchKeywordRule, type KeywordRule } from "../nlu/rules.js";
+import { isAffirmative, isNegative, isOkNow, matchKeywordRule, type KeywordRule } from "../nlu/rules.js";
 import { EXTRA_COPY } from "../notify/templates.js";
 import { matchCodeWords, normalizeText } from "../pipeline/codewords.js";
 import { captureGuardian, currentGuardianFor, guardianHasObligation, guardianKeyword, handleGuardianInbound, stopGuardian } from "./guardian.js";
@@ -248,14 +248,39 @@ async function handleUserText(ports: DialoguePorts, user: User, plan: Plan | nul
     }
   }
 
+  // H1: a model-suggested venue change waits for the user's yes (only while ACTIVE).
+  if (p?.kind === "moving_confirm") {
+    await ports.repo.setDialogueState(user.id, { ...ds, pending: null });
+    if (plan && plan.id === p.planId && plan.state === "ACTIVE" && isAffirmative(text)) {
+      return dispatchCommand(ports, user, plan, "moving", null, p.venueText, p.venueText);
+    }
+    if (isNegative(text)) return "moving_declined";
+  }
+
   // Inside a window: classify the reply and hand the label to the engine.
   if (inWindow(plan)) {
+    // C2: "I'm okay now" is matched deterministically; it alone ends a silent escalation.
+    if (isOkNow(text)) {
+      await ports.dispatch(plan.id, { type: "user_reply", label: "OK", messageId, okNow: true });
+      return "reply_ok_now";
+    }
     const r = await ports.typing(to, () =>
       classifyReply({ text, fromVoice, state: plan.state, planType: plan.type, lastPrompt: null }, ports.llm),
     );
     if (r.distress) {
       await ports.dispatch(plan.id, { type: "distress", messageId });
       return "distress";
+    }
+    if (r.label === "COMMAND" && r.command === "moving" && r.source === "model") {
+      // H1: never move the venue on a model guess. Ask first while ACTIVE; elsewhere treat the
+      // reply as unclear so the ladder's clarify line goes out.
+      if (plan.state === "ACTIVE") {
+        await ports.repo.setDialogueState(user.id, { ...ds, pending: { kind: "moving_confirm", planId: plan.id, venueText: text.trim().slice(0, 200) } });
+        await sendTemplate(ports, to, "act_new_spot", {}, { planState: plan.state });
+        return "moving_confirm_ask";
+      }
+      await ports.dispatch(plan.id, { type: "user_reply", label: "AMBIGUOUS", messageId });
+      return "reply_ambiguous";
     }
     if (r.label === "COMMAND" && r.command) return dispatchCommand(ports, user, plan, r.command, r.extendMin, r.venueText ?? null, text);
     if (r.label === "COMMAND") return "command_unknown";

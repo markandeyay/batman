@@ -221,7 +221,11 @@ export type EngineEvent =
   | { type: "fix"; fix: Fix }
   | { type: "location_shared"; expiresAt: Date | null }
   | { type: "location_not_shared" }
-  | { type: "user_reply"; label: ReplyLabel; messageId: string }
+  /**
+   * okNow: the deterministic rule matched an explicit "I'm okay now" (6.7 step 4). Only this,
+   * never a classifier OK, ends an alert-word or distress escalation (C2, I7).
+   */
+  | { type: "user_reply"; label: ReplyLabel; messageId: string; okNow?: boolean }
   | { type: "user_reaction"; emoji: ReactionEmoji; targetMessageId: string }
   | ({ type: "user_command" } & UserCommand)
   | { type: "exit_word"; messageId: string }

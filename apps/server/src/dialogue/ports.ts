@@ -93,6 +93,8 @@ export interface DialogueState {
     | { kind: "codewords" }
     | { kind: "caller" }
     | { kind: "questions"; planId: string }
+    /** H1: the model thought the user is moving; confirm before changing the venue. */
+    | { kind: "moving_confirm"; planId: string; venueText: string }
     | null;
   intake?: {
     planId: string;
