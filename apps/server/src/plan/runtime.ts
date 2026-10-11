@@ -9,7 +9,7 @@ import type { Store } from "../store/db.js";
 import * as repo from "../store/repo.js";
 import { buildContext } from "./context.js";
 import { newDraftPlan, type DraftInput } from "./factory.js";
-import { acceptsFixes, applyEvent, type EngineOutput } from "./stateMachine.js";
+import { acceptsFixes, applyEvent, canMessageGuardian, type EngineOutput } from "./stateMachine.js";
 import type { EngineContext, EnginePlan } from "./types.js";
 
 export type SendEffect = Extract<Effect, { kind: "send" }>;
@@ -51,6 +51,8 @@ export interface PlanRuntimeOptions {
   lastUserMessageId?: (plan: EnginePlan) => string | null;
   /** Override night detection (tests). */
   night?: boolean;
+  /** The pure engine (tests inject a failing one to exercise I16 paths). Default applyEvent. */
+  engine?: typeof applyEvent;
   /** Audit events that must be logged at critical level (M7: escalation with no reachable guardian). */
   onCritical?: (event: string, info: { planId: string; data?: Record<string, unknown> }) => void;
   /** Hard real-time bound on one call placement (H5). Default 60 s. A timeout counts as not placed. */
@@ -63,7 +65,13 @@ const SHARE_JOBS: readonly JobKind[] = ["loc_poll", "t_minus_30"];
 export const CALL_TIMEOUT_MS = 60_000;
 
 /** Engine audit events that the runtime reports through onCritical (M7, X3). */
-export const CRITICAL_AUDITS: readonly string[] = ["escalation_no_guardian", "escalation_guardian_lost", "fallback_guardian_alert"];
+export const CRITICAL_AUDITS: readonly string[] = ["escalation_no_guardian", "escalation_guardian_lost", "fallback_guardian_alert", "fallback_guardian_alert_unreachable"];
+
+/** Events whose handler must never fail silently toward the guardian (M3): L3, alert word, distress. */
+function safetyCritical(event: EngineEvent): boolean {
+  if (event.type === "alert_word" || event.type === "distress") return true;
+  return event.type === "timer" && event.job === "ladder" && event.payload?.step === "L3";
+}
 
 export class PlanRuntime {
   private readonly queues = new Map<string, Promise<unknown>>();
@@ -145,13 +153,15 @@ export class PlanRuntime {
     const plan = repo.getPlan(this.o.store, planId);
     if (!plan) return null;
     const now = this.o.clock.now();
-    const ctx = buildContext(this.o.store, plan, now, this.o.defaultTz, this.o.night === undefined ? extra : { ...extra, night: this.o.night });
     let out: EngineOutput;
     try {
-      out = applyEvent(plan, event, ctx);
+      const ctx = buildContext(this.o.store, plan, now, this.o.defaultTz, this.o.night === undefined ? extra : { ...extra, night: this.o.night });
+      out = (this.o.engine ?? applyEvent)(plan, event, ctx);
     } catch (err) {
       this.o.onError?.(err, { planId, event: event.type });
-      // I16: fail toward the user with a plain check-in, then let the caller retry.
+      // M3: an L3, alert word, or distress handler that throws still reaches the guardian, once.
+      if (safetyCritical(event)) await this.fallbackGuardianAlert(plan, event).catch((e2: unknown) => this.o.onError?.(e2, { planId, effect: "fallback_guardian_alert" }));
+      // I16: fail toward the user with a plain check-in (the engine rate-limits it), then let the caller retry.
       if (event.type !== "internal_error" && acceptsFixes(plan.state)) {
         await this.dispatchNow(planId, { type: "internal_error", message: err instanceof Error ? err.message : String(err) }, {});
       }
@@ -164,6 +174,29 @@ export class PlanRuntime {
     })();
     await this.performOutbound(out.plan, out.effects);
     return out;
+  }
+
+  /**
+   * M3 fallback path: the engine failed on a safety-critical event. Send one minimal, fixed
+   * gdn_alert (no location, I4) if the guardian accepted and has not stopped (I1, I14).
+   */
+  private async fallbackGuardianAlert(plan: EnginePlan, event: EngineEvent): Promise<void> {
+    if (repo.listPlanEvents(this.o.store, plan.id).some((e) => e.kind === "fallback_guardian_alert" || e.kind === "fallback_guardian_alert_unreachable")) return;
+    const now = this.o.clock.now();
+    const ctx = buildContext(this.o.store, plan, now, this.o.defaultTz);
+    const reason =
+      event.type === "alert_word"
+        ? ({ kind: "alert_word" } as const)
+        : event.type === "distress"
+          ? ({ kind: "distress" } as const)
+          : ({ kind: "no_reply", trigger: plan.ladderTrigger ?? "T-OVR", minutesSilent: Math.max(0, Math.round((now.getTime() - (plan.ladderStartedAt ?? now).getTime()) / 60_000)) } as const);
+    if (!canMessageGuardian(plan, ctx)) {
+      this.applyInternal(plan.id, { kind: "audit", event: "fallback_guardian_alert_unreachable", data: { reason: reason.kind } });
+      return;
+    }
+    this.applyInternal(plan.id, { kind: "audit", event: "fallback_guardian_alert", data: { reason: reason.kind, event: event.type } });
+    const params = { tz: ctx.timeZone, now, userName: ctx.user.displayName, guardianName: ctx.guardian?.displayName ?? null, reason, type: plan.type, locationMode: "none" as const };
+    await this.o.out.send({ kind: "send", to: "guardian", template: "gdn_alert", params, critical: true, notifyAnyway: true }, plan);
   }
 
   private applyInternal(planId: string, e: Effect): void {

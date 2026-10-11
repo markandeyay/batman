@@ -64,6 +64,8 @@ export const GUARDIAN_UPDATE_WINDOW_MS = 120 * MIN_MS;
 export const CLOSING_TIMEOUT_MS = 90 * MIN_MS;
 /** M1: an escalation closes 2 h after the last guardian-facing activity (alert, repeat, update, GOT IT). */
 export const ESCALATION_END_MS = 120 * MIN_MS;
+/** M3: plain_checkin_error at most once per plan per hour. */
+export const ERROR_CHECKIN_EVERY_MS = 60 * MIN_MS;
 export const PURGE_AFTER_MS = 24 * 60 * MIN_MS;
 export const DRAFT_TTL_MS = 12 * 60 * MIN_MS;
 export const RECONFIRM_THRESHOLD_MS = 7 * 24 * 60 * MIN_MS;
@@ -790,8 +792,12 @@ export const TRANSITIONS: readonly TransitionRow[] = [
     from: WINDOW_STATES,
     on: "internal_error",
     run: (tx, e) => {
-      tx.send("user", "plain_checkin_error");
       tx.audit("internal_error", { message: e.message.slice(0, 200) });
+      // M3: at most one plain check-in per plan per hour, however often a job retries.
+      const last = tx.p.errorCheckinAt;
+      if (last && tx.now.getTime() - last.getTime() < ERROR_CHECKIN_EVERY_MS) return;
+      tx.p.errorCheckinAt = tx.now;
+      tx.send("user", "plain_checkin_error");
     },
   }),
 ];
