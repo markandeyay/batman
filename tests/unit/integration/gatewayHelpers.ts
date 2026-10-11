@@ -117,8 +117,8 @@ export function makeChannel(store: Store, clock: FakeClock, extra: Partial<Const
 }
 
 export const fakeRender = (id: TemplateId, params: Record<string, unknown>): string => {
-  const fix = params.fix ?? params.lastFix;
-  return fix ? `${id} at ${JSON.stringify(fix)}` : id;
+  const fix = (params.fix ?? params.lastFix) as { lat: number; lng: number } | undefined;
+  return fix ? `${id} https://maps.apple.com/?ll=${fix.lat},${fix.lng}` : id;
 };
 
 export function makeExecutor(store: Store, clock: FakeClock, opts: Partial<ExecutorOptions> = {}) {
