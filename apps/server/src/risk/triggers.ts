@@ -121,7 +121,9 @@ export function evaluateTriggers(plan: EnginePlan, now: Date, fixes: readonly Fi
         const fresh = dep && (!plan.lastResolvedAt || dep.leftAt.getTime() > plan.lastResolvedAt.getTime());
         if (dep && fresh) {
           const vehicle = isVehicleSpeed(fixes.filter((f) => f.at.getTime() >= dep.leftAt.getTime() - 120_000));
-          const beforeEnd = phase === "ACTIVE" && now.getTime() < endMs - DEPARTURE_END_MARGIN_MS;
+          // "Departure before planned end - 10 min" is judged by when the user left, not by
+          // when two outside fixes confirmed it (about a minute later).
+          const beforeEnd = phase === "ACTIVE" && dep.leftAt.getTime() < endMs - DEPARTURE_END_MARGIN_MS;
           if (vehicle && plan.transport && CAR_UNEXPECTED.includes(plan.transport)) add("T-DEP-CAR-THEIRS");
           if (vehicle && beforeEnd) add("T-DEP-CAR");
           // Dates: walking to a nearby spot is common (4.4.1); T-VENUE-CHG covers it instead.

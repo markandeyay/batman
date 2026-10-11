@@ -69,10 +69,17 @@ describe("departure triggers", () => {
     expect(evaluateTriggers(active({ type: "date" }), at(33), fixes)).toEqual([]);
   });
 
-  it("T-DEP-WALK does not fire within 10 min of planned end", () => {
+  it("T-DEP-WALK does not fire when the user left within 10 min of planned end", () => {
     const p = active({ type: "other", endAt: at(40) });
-    const fixes = [...insideFixes(0, 26), ...departFixes(26, 1.4, 4)];
-    expect(evaluateTriggers(p, at(30), fixes)).toEqual([]);
+    const fixes = [...insideFixes(0, 30), ...departFixes(30, 1.4, 3)];
+    expect(evaluateTriggers(p, at(33), fixes)).toEqual([]);
+  });
+
+  it("the end margin is judged by when the user left, not when it was confirmed", () => {
+    // Leaves at 29 (first outside fix), confirmed at 31; end - 10 = 30.
+    const p = active({ type: "other", endAt: at(40) });
+    const fixes = [...insideFixes(0, 28), ...departFixes(28, 1.4, 3)];
+    expect(ids(evaluateTriggers(p, at(31), fixes))).toEqual(["T-DEP-WALK"]);
   });
 
   it("T-DEP-CAR: vehicle-speed departure before end - 10", () => {

@@ -67,12 +67,13 @@ function write(name: string, track: Record<string, unknown>): void {
 
 // S-02 / S-03: date runs 40 min over at the venue.
 {
+  const leave = travel(venue, home, 160, 10);
   write("date-overtime", {
-    description: "Date 2 h. Stays at the venue until +02:40 (40 min over). Replies +30 at +02:18, texts home at +02:55.",
+    description: "Date 2 h. Stays at the venue until +02:40 (40 min over), then drives home. Replies +30 at +02:18, texts home at +02:55.",
     venue,
     home,
     noise: noise(11),
-    fixes: [...stay(venue, -2, 160)],
+    fixes: [...stay(venue, -2, 160), ...leave.fixes, ...stay(home, Math.ceil(leave.endMin), 200)],
     userMessages: [
       { t: "+02:18", text: "+30" },
       { t: "+02:55", text: "home" },
@@ -116,7 +117,7 @@ function write(name: string, track: Record<string, unknown>): void {
     venue,
     home,
     noise: noise(9),
-    fixes: [...stay(venue, -1, 40), ...walk.fixes, ...stay(bar, atBar, atBar + 30), ...stay(bar, atBar + 31, 118)],
+    fixes: [...stay(venue, -1, 40), ...walk.fixes, ...stay(bar, atBar, atBar + 30), ...stay(bar, atBar + 31, 140)],
     userMessages: [
       { t: "+00:58", text: "yeah we moved to the bar next door", label: "OK" },
       { t: "+02:10", text: "home" },
@@ -127,13 +128,13 @@ function write(name: string, track: Record<string, unknown>): void {
 // S-10: date, location goes dark for 12 min mid-date, then "phone died lol".
 {
   write("date-dark", {
-    description: "Date 2 h. Fixes every minute, none from +00:50 to +01:02 (12 min dark). Replies phone died lol at +01:03.",
+    description: "Date 2 h. Fixes every minute, none from +00:50 to +01:02 (12 min dark). Replies phone died lol at +01:02:30.",
     venue,
     home,
     noise: noise(13),
-    fixes: [...stay(venue, -1, 50), ...stay(venue, 62, 118)],
+    fixes: [...stay(venue, -1, 50), ...stay(venue, 62, 140)],
     userMessages: [
-      { t: "+01:03", text: "phone died lol", label: "OK" },
+      { t: "+01:02:30", text: "phone died lol", label: "OK" },
       { t: "+02:05", text: "home" },
     ],
   });

@@ -1,6 +1,6 @@
 {
   "name": "date-dark",
-  "description": "Date 2 h. Fixes every minute, none from +00:50 to +01:02 (12 min dark). Replies phone died lol at +01:03.",
+  "description": "Date 2 h. Fixes every minute, none from +00:50 to +01:02 (12 min dark). Replies phone died lol at +01:02:30.",
   "venue": {
     "lat": 41.9172,
     "lng": -87.7067
@@ -669,11 +669,143 @@
       "lat": 41.9172,
       "lng": -87.7067,
       "accuracyM": 20
+    },
+    {
+      "t": "+01:59",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:00",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:01",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:02",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:03",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:04",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:05",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:06",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:07",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:08",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:09",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:10",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:11",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:12",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:13",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:14",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:15",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:16",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:17",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:18",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:19",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
+    },
+    {
+      "t": "+02:20",
+      "lat": 41.9172,
+      "lng": -87.7067,
+      "accuracyM": 20
     }
   ],
   "userMessages": [
     {
-      "t": "+01:03",
+      "t": "+01:02:30",
       "text": "phone died lol",
       "label": "OK"
     },
