@@ -339,6 +339,49 @@ async function stepWatch(address: string): Promise<void> {
 }
 
 // ---------- main ----------
+
+// track: get() every 20 s plus a concurrent watch() for N minutes (default 6).
+// Prints only distances in meters (from the first fix and from the previous one), never coordinates.
+function haversineM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000, rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+async function stepTrack(address: string, minutes: number): Promise<void> {
+  const { im } = await buildClient();
+  const deadline = Date.now() + minutes * 60 * 1000;
+  let first: { lat: number; lng: number } | null = null;
+  let prev: { lat: number; lng: number; at: number } | null = null;
+  let maxFromStart = 0;
+  const report = (src: string, l: SharedFriendLocation) => {
+    if (typeof l.latitude !== "number" || typeof l.longitude !== "number") { log(`${src}: no coordinates`); return; }
+    const p = { lat: l.latitude, lng: l.longitude };
+    const ts = l.locationTimestamp?.getTime() ?? Date.now();
+    if (!first) first = p;
+    const fromStart = haversineM(first, p);
+    maxFromStart = Math.max(maxFromStart, fromStart);
+    const step = prev ? haversineM(prev, p) : 0;
+    const speed = prev && ts > prev.at ? step / ((ts - prev.at) / 1000) : 0;
+    log(`${src}: fromStart=${fromStart.toFixed(0)}m step=${step.toFixed(0)}m speed=${speed.toFixed(1)}m/s acc=${Math.round(l.accuracy ?? -1)}m type=${l.locationType} fixAge=${Math.round((Date.now() - ts) / 1000)}s`);
+    prev = { ...p, at: ts };
+  };
+  const stream = im.locations.watch(address);
+  const watcher = (async () => {
+    try { for await (const u of stream as AsyncIterable<SharedFriendLocationUpdated>) report(`watch seq=${u.sourceSequence}`, u.location); }
+    catch (e) { logError("watch", e); }
+  })();
+  log(`TRACK RUNNING until ${new Date(deadline).toISOString()}`);
+  while (Date.now() < deadline) {
+    try { report("get", await im.locations.get(address)); } catch (e) { logError("get", e); }
+    await sleep(20000);
+  }
+  await stream.close().catch(() => undefined);
+  await watcher;
+  log(`TRACK DONE maxFromStart=${maxFromStart.toFixed(0)}m`);
+  await im.close().catch(() => undefined);
+}
+
 const step = process.argv[2];
 const address = need("HUMAN_IPHONE_E164");
 if (!/^\+[1-9]\d{6,14}$/.test(address)) { console.error("FAIL  HUMAN_IPHONE_E164 must be E.164"); process.exit(2); }
@@ -351,6 +394,7 @@ try {
     case "poll": { const { im } = await buildClient(); try { await stepPoll(im, address, process.argv.includes("--once")); } finally { await im.close().catch(() => undefined); } break; }
     case "control": { const { im } = await buildClient(); try { await stepControl(im, address); } finally { await im.close().catch(() => undefined); } break; }
     case "watch": await stepWatch(address); break;
+    case "track": await stepTrack(address, Number(process.argv[3] ?? 6)); break;
     case "users": await stepUsers(address); break;
     default:
       console.error("usage: npx tsx scripts/spike-s1.ts <focus|request|poll [--once]|watch|users|control>");
