@@ -58,6 +58,13 @@ export function isSameNumber(a: string, b: string): boolean {
   return x !== null && x === y;
 }
 
+/** Human-friendly format: "+16285550100" -> "(628) 555-0100"; international numbers keep the "+". */
+export function formatPhoneForDisplay(e164: string): string {
+  const pn = parsePhoneNumberFromString(e164);
+  if (!pn) return e164;
+  return pn.countryCallingCode === "1" ? pn.formatNational() : pn.formatInternational();
+}
+
 /** Redact to the last 4 digits for logs (spec 8.1): "+19195550142" -> "***0142". */
 export function redactPhone(phone: string | null | undefined): string {
   if (!phone) return "***";

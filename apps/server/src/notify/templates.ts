@@ -13,6 +13,7 @@ import type {
 } from "../contracts.js";
 import { TEMPLATE_IDS } from "../contracts.js";
 import { FALLBACK_TZ, formatClock, formatClockRange, formatDayTime, isValidTz } from "../geo/timezone.js";
+import { formatPhoneForDisplay } from "../util/phone.js";
 
 /**
  * Parameters a template may use. All optional; templates degrade gracefully. Dates may be Date
@@ -68,6 +69,9 @@ export interface TemplateParams {
   expiresAt?: Date | string | null;
   /** onb_save_contact: true when the user only changed code words (no contact card step). */
   changeOnly?: boolean | null;
+  /** onb_guardian_text_first: the pool number assigned to the guardian, and its sms: link. */
+  assignedNumber?: string | null;
+  smsLink?: string | null;
 }
 
 type Variant = (c: Ctx) => string;
@@ -392,6 +396,20 @@ const T: Record<TemplateId, Variant[]> = {
       ),
   ],
   onb_guardian_invalid: [(c) => GUARDIAN_INVALID_REASONS[c.p.reasonId ?? "no_number"] ?? GUARDIAN_INVALID_REASONS.no_number!],
+  // Shared pool deviation from 4.3 (DECISIONS.md): Batman cannot text the guardian until the
+  // guardian texts their assigned pool number first.
+  onb_guardian_text_first: [
+    (c) => {
+      const num = clean(c.p.assignedNumber);
+      const shown = num ? formatPhoneForDisplay(num) : "my number";
+      const link = clean(c.p.smsLink);
+      return lines(
+        `Got it. Ask ${c.guardian} to text hi to ${shown} from their phone. That's my number for them, different from yours.`,
+        `Once they do, I'll ask if they're okay being your backup.`,
+        link ? `They can also tap this: ${link}` : null,
+      );
+    },
+  ],
 
   // ---------- guardian opt-in (4.3) ----------
   gdn_optin_request: [
@@ -454,6 +472,7 @@ const T: Record<TemplateId, Variant[]> = {
   // ---------- pre-meetup (4.5) ----------
   loc_request_intro: [() => 'Tap Share on the card below and pick "Share Until End of Day." I\'ll stop looking when you\'re done.'],
   loc_reminder: [() => 'Reminder: tap Share on that location card and pick "Share Until End of Day."'],
+  loc_pin_unsupported: [() => "Can you send that as a Maps link or just type the address?"],
   // Spec text is "I'll just check in on time"; reworded because "check in" is on the I10 list.
   loc_time_only: [() => "No location, no problem. I'll just go by the time."],
   loc_extend_ask: [
@@ -595,6 +614,7 @@ const PRE_WINDOW_ONLY: readonly TemplateId[] = [
   "onb_save_contact",
   "onb_disclosure_done",
   "onb_guardian_invalid",
+  "onb_guardian_text_first",
   "plan_confirm",
   "help",
   "quota_onboarding_paused",
