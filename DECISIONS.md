@@ -83,3 +83,16 @@ Format: date, decision, why, spec section affected.
 - Find My acceptance is detected with `get()` polling; first fix had accuracy 6.7 m, type "shallow". LOCATION_SOURCE=findmy is the default.
 - Native "Send My Current Location" pins arrive as unsupported content. Venue and home pins use typed addresses or pasted Maps links.
 - The host PC entered Windows Modern Standby for 41 minutes while on AC power with standby-timeout-ac 0. Modern Standby is triggered by screen off or lid close regardless of the sleep timer. `pnpm run doctor` now warns about this; demo and real use need the screen kept on (`powercfg /change monitor-timeout-ac 0`, lid open) or an always-on host (spec 17 Option B).
+
+## 2026-10-10: Core engine judgment calls (core-engineer, accepted)
+1. On a date, walking away from the venue does not fire T-DEP-WALK; T-VENUE-CHG ("New spot?") handles it (needed for S-09, matches 4.4.1 "venue changes are common and usually fine").
+2. "Before planned end minus 10 min" for departure triggers is judged at the time the user left, not when departure was confirmed (S-08: leaving at minute 8 is confirmed at minute 10).
+3. Night and high-vigilance multipliers compound (0.7 x 0.6 = 0.42). Night is counted once.
+4. A NOT_OK reply places the exit call and sends act_calling_you_now (spec 6.4 "offer the exit call" interpreted as "do it"; the user can decline the call). NOT_OK while ACTIVE opens a soft ladder with lad_clarify.
+5. Overtime extensions count from max(planned end, now). An OK reply in overtime counts toward the 4 h cap; an explicit "+N" does not.
+6. Guardian location updates after GOT IT: checked every 5 min, sent only if the user moved more than 150 m ("whichever is later").
+7. The engine itself sends plan_locked_in, plan_awaiting_guardian, plan_armed_now, and usr_guardian_stopped for open plans. The dialogue layer must not duplicate them.
+8. CLOSING uses closedAt as its start marker for home-arrival detection; overwritten on close.
+9. An alert word during an existing escalation re-sends gdn_alert once with the stronger reason, with no second call.
+10. Runtime layer (plan/runtime.ts) persists plan plus jobs in one transaction, then performs outbound effects through an OutboundPort the gateway implements.
+- Contract proposals (extra Plan fields, a guardian "plan started" template, a call_result event) are held in EnginePlan locally; contracts.ts will be updated during integration.
