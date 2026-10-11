@@ -261,6 +261,8 @@ const GO = new Set([
 
 /** "go" (or equivalent) after a plan confirmation (I1). */
 export function isGo(text: string): boolean {
+  // A question ("ok?", "go?") is not consent (I1).
+  if (/\?\s*$/.test(text.trim())) return false;
   const n = stripTrailingFiller(norm(text));
   return GO.has(n) || (n === "" && hasThumbsUp(text));
 }

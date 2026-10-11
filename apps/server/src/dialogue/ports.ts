@@ -80,8 +80,11 @@ export interface DialogueState {
   pending?:
     /** confirmMessageId: Batman's plan_confirm message; only a tapback on it arms (L7, I1). */
     | { kind: "go"; planId: string; confirmMessageId?: string | null }
-    | { kind: "time_confirm"; planId: string; proposed: string }
-    | { kind: "time_past"; planId: string; proposed: string }
+    /** fromConfirm: asked from the plan confirmation; on yes, re-confirm only the time (4.4.6). */
+    | { kind: "time_confirm"; planId: string; proposed: string; fromConfirm?: boolean }
+    | { kind: "time_past"; planId: string; proposed: string; fromConfirm?: boolean }
+    /** An ambiguous edit ("change it to 2"): two readings, ISO strings. */
+    | { kind: "time_choice"; planId: string; options: string[]; fromConfirm: boolean }
     | { kind: "replace"; planId: string; text: string }
     | { kind: "delete" }
     | { kind: "new_guardian" }
@@ -102,6 +105,8 @@ export interface DialogueState {
     durationMin: number | null;
     messages: string[];
   } | null;
+  /** Batman's latest plan_confirm or plan_updated message (a tapback on it means GO, L7). */
+  lastConfirmMessageId?: string | null;
 }
 
 export interface DialogueRepo {

@@ -386,8 +386,15 @@ export const TEMPLATE_IDS = [
   // X3: L3 with no reachable guardian. Discreet line in a window; plain explanation after it.
   "usr_backup_unreachable",
   "usr_backup_unreachable_explain",
-  // X4: a plan that never got a guardian expired at its start
+  // X4: a plan that never got a guardian expired at its end
   "plan_expired_unarmed",
+  // confirm step (4.4.6): re-confirm only changed fields, short nudge, one time question
+  "plan_updated",
+  "plan_go_nudge",
+  "plan_time_choice_ask",
+  // small talk outside windows (4.1, 9.4): fixed fallback answers and the one-line steer back
+  "smalltalk_reply",
+  "smalltalk_steer",
 ] as const;
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
 
@@ -455,6 +462,10 @@ export type TemplateParams = {
   decoyCaller?: DecoyCaller | null;
   /** gdn_all_clear / close_done_ack: why the plan ended (H2: honest copy per reason). */
   closeReason?: CloseReason | null;
+  /** plan_time_choice_ask: the two readings of an ambiguous time. */
+  options?: Array<Date | string> | null;
+  /** smalltalk_steer: the pending step to steer back to; smalltalk_reply uses reasonId for the topic. */
+  step?: string | null;
 };
 
 /** Why a plan closed. Only "home" and "home_arrival" may say "home safe" (I11). */
