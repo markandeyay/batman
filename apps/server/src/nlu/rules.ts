@@ -87,7 +87,7 @@ export function isExplicitDistress(text: string): boolean {
 export function hasDistressLexicon(text: string): boolean {
   const n = norm(text);
   if (n === "") return false;
-  if (/^(no|nope|nah|naw|nop|negative)( \w+)?$/.test(n) && !/^no (worries|problem|prob|probs|biggie|issues|stress|doubt)$/.test(n)) return true;
+  if (/^(no|nope|nah|naw|nop|negative)( \w+)?$/.test(n) && !/^no (worries|problem|problems|prob|probs|biggie|issue|issues|stress|doubt|complaints)$/.test(n)) return true;
   return DISTRESS_LEXICON.some((p) => containsPhrase(n, p, { negationGuard: true }));
 }
 
