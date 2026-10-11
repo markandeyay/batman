@@ -541,3 +541,8 @@ interface SpeechCreateParams {
 - Message ids: the SDK passes the message id through unchanged as the iMessage id. On the shared pool the `spc-msg-<uuid>` id is what gRPC expects, so `messages.notifySilenced("any;-;<number>", id)` takes it directly; strip a `p:<i>/` prefix for parts of multi-part messages.
 - Multi-part inbound messages arrive as ONE message with content type `group` whose parts are inside it (not separate messages).
 - Reactions: only added reactions are delivered; removals are not.
+
+## Addendum 2026-10-10 (read receipts, verified against installed types)
+- `@photon-ai/advanced-imessage` 2.2.0 `dist/grpc.d.ts` `ChatsResource.markRead(chat: string): Promise<void>` marks every unread message in the chat as read. There is no per-message API. DM chat GUID: `any;-;<E164>`.
+- `@spectrum-ts/imessage` 12.10.1 uses the same call internally (`remote.chats.markRead(toChatGuid(spaceId))`, sent when a `read` content is sent to a space) and drops the echo of its own markRead (the resolved target is an inbound message).
+- Batman calls it fire and forget from the gateway (`gateway/readReceipts.ts`, InboundLoop `onAccepted`, after dedupe). Users have always texted first, so the shared-pool allowlist permits it. Not yet observed live.
