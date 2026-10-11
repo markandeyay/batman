@@ -107,6 +107,11 @@ export interface DialogueState {
   } | null;
   /** Batman's latest plan_confirm or plan_updated message (a tapback on it means GO, L7). */
   lastConfirmMessageId?: string | null;
+  /**
+   * Code word entry one at a time (4.2). Holds the normalized exit word until the alert word
+   * arrives (the codewords table already stores the normalized form; never logged, I8).
+   */
+  codewordDraft?: { awaiting: "exit" | "alert"; exit: string | null } | null;
 }
 
 export interface DialogueRepo {

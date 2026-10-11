@@ -395,6 +395,9 @@ export const TEMPLATE_IDS = [
   // small talk outside windows (4.1, 9.4): fixed fallback answers and the one-line steer back
   "smalltalk_reply",
   "smalltalk_steer",
+  // code word entry (4.2): one at a time after a parse failure; which-is-which after a positional pair
+  "onb_codeword_ask",
+  "onb_codewords_order",
 ] as const;
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
 
@@ -466,6 +469,9 @@ export type TemplateParams = {
   options?: Array<Date | string> | null;
   /** smalltalk_steer: the pending step to steer back to; smalltalk_reply uses reasonId for the topic. */
   step?: string | null;
+  /** onb_codewords_order only (the user's own chat, outside any window): the saved words. */
+  exitWord?: string | null;
+  alertWord?: string | null;
 };
 
 /** Why a plan closed. Only "home" and "home_arrival" may say "home safe" (I11). */

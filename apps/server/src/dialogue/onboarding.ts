@@ -2,10 +2,10 @@
 // ask_name -> ask_guardian -> ask_codewords -> done. The disclosure (I13) and adults-only notice
 // (I15) are sent before the user can plan. No age is ever asked or stored (I15).
 import type { E164, InboundMessage, User } from "../contracts.js";
-import { parseCodeWordReply, validateCodeWords } from "../pipeline/codewords.js";
-import { captureGuardian } from "./guardian.js";
+import { parseCodeWordParts, parseSingleCodePhrase, tokenize, validateCodePhrase, validateCodeWords } from "../pipeline/codewords.js";
+import { captureGuardian, currentGuardianFor } from "./guardian.js";
 import { sendTemplate } from "./out.js";
-import type { DialoguePorts } from "./ports.js";
+import type { DialoguePorts, DialogueState } from "./ports.js";
 
 export const ONBOARDING_STEPS = ["ask_name", "ask_guardian", "ask_codewords", "done"] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
@@ -46,21 +46,102 @@ export async function sendCodewordsDone(ports: DialoguePorts, to: E164): Promise
   await sendTemplate(ports, to, "onb_disclosure_done");
 }
 
-/** Handle the user's codeword reply. Returns true when saved. Shared with "change code words". */
+type Draft = NonNullable<DialogueState["codewordDraft"]>;
+
+async function setDraft(ports: DialoguePorts, user: User, draft: Draft | null): Promise<void> {
+  const ds = (await ports.repo.getDialogueState(user.id)) ?? {};
+  await ports.repo.setDialogueState(user.id, { ...ds, codewordDraft: draft });
+}
+
+async function askOne(ports: DialoguePorts, user: User, step: "exit" | "alert", reasonId: string | null): Promise<void> {
+  const cur = await currentGuardianFor(ports, user.id);
+  await sendTemplate(ports, user.addressE164, "onb_codeword_ask", { step, reasonId, guardianName: cur?.guardian.displayName ?? null });
+}
+
+async function saveCodeWords(
+  ports: DialoguePorts,
+  user: User,
+  words: { exit: string; alert: string },
+  opts: { changeOnly: boolean; positional: boolean },
+): Promise<void> {
+  await ports.repo.setCodeWords(user.id, words);
+  await setDraft(ports, user, null);
+  // A pair without labels was read as exit first: say which is which (4.2, live feedback).
+  if (opts.positional) await sendTemplate(ports, user.addressE164, "onb_codewords_order", { exitWord: words.exit, alertWord: words.alert });
+  if (opts.changeOnly) await sendTemplate(ports, user.addressE164, "onb_save_contact", { changeOnly: true });
+  else await sendCodewordsDone(ports, user.addressE164);
+}
+
+/**
+ * Handle the user's code word reply (4.2). Returns true when saved. Shared with "change code
+ * words". Common forms are parsed deterministically; when the reply cannot be parsed, Batman asks
+ * one at a time ("What's your exit word?" then "And your alert word?") instead of repeating the
+ * format. Validation rules are exactly 4.2 (validateCodePhrase / validateCodeWords). Code words
+ * never reach the model and are never logged (I8).
+ */
 export async function handleCodewordReply(ports: DialoguePorts, user: User, text: string, opts: { changeOnly: boolean }): Promise<boolean> {
-  const parsed = parseCodeWordReply(text);
-  if (!parsed) {
-    await sendTemplate(ports, user.addressE164, "onb_codewords_invalid", { reasonId: "format" });
-    return false;
-  }
-  const v = validateCodeWords(parsed.exit, parsed.alert);
-  if (!v.ok) {
+  const ds = (await ports.repo.getDialogueState(user.id)) ?? {};
+  const draft = ds.codewordDraft ?? null;
+  const parts = parseCodeWordParts(text);
+
+  // 1. A full pair always wins, in either mode.
+  if (parts?.exit && parts.alert) {
+    const v = validateCodeWords(parts.exit, parts.alert);
+    if (v.ok) {
+      await saveCodeWords(ports, user, v.codeWords, { ...opts, positional: parts.positional });
+      return true;
+    }
+    if (v.reason === "format" || v.reason === "word_count") {
+      // Most likely a misread, not a bad choice: go one at a time.
+      await setDraft(ports, user, { awaiting: "exit", exit: null });
+      await askOne(ports, user, "exit", v.reason === "word_count" ? "word_count" : null);
+      return false;
+    }
     await sendTemplate(ports, user.addressE164, "onb_codewords_invalid", { reasonId: v.reason });
     return false;
   }
-  await ports.repo.setCodeWords(user.id, v.codeWords);
-  if (opts.changeOnly) await sendTemplate(ports, user.addressE164, "onb_save_contact", { changeOnly: true });
-  else await sendCodewordsDone(ports, user.addressE164);
+
+  // 2. One labeled word ("exit word is pineapple") or one-at-a-time mode.
+  let awaiting: "exit" | "alert" | null = draft?.awaiting ?? null;
+  let phrase: string | null = null;
+  if (parts && (parts.exit || parts.alert)) {
+    awaiting = parts.exit ? "exit" : "alert";
+    phrase = parts.exit ?? parts.alert;
+  } else if (draft) {
+    phrase = parseSingleCodePhrase(text);
+  }
+  if (!awaiting || !phrase) {
+    // Could not tell what this is: switch to one at a time, no format lecture.
+    await setDraft(ports, user, { awaiting: draft?.awaiting ?? "exit", exit: draft?.exit ?? null });
+    await askOne(ports, user, draft?.awaiting ?? "exit", draft ? "format" : null);
+    return false;
+  }
+  const bad = validateCodePhrase(phrase);
+  if (bad) {
+    await setDraft(ports, user, { awaiting, exit: awaiting === "alert" ? (draft?.exit ?? null) : null });
+    await askOne(ports, user, awaiting, bad);
+    return false;
+  }
+  const normalized = tokenize(phrase).join(" ");
+  if (awaiting === "exit") {
+    await setDraft(ports, user, { awaiting: "alert", exit: normalized });
+    await askOne(ports, user, "alert", null);
+    return false;
+  }
+  const exit = draft?.exit ?? null;
+  if (!exit) {
+    // Alert word first ("alert: blue moon"): keep it simple and ask for the exit word next.
+    await setDraft(ports, user, { awaiting: "exit", exit: null });
+    await askOne(ports, user, "exit", null);
+    return false;
+  }
+  const v = validateCodeWords(exit, normalized);
+  if (!v.ok) {
+    await setDraft(ports, user, { awaiting: "alert", exit });
+    await askOne(ports, user, "alert", v.reason);
+    return false;
+  }
+  await saveCodeWords(ports, user, v.codeWords, { ...opts, positional: false });
   return true;
 }
 

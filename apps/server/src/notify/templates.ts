@@ -327,6 +327,16 @@ const CODEWORD_REASONS: Record<string, string> = {
   too_similar: "Those are too close to each other, I might mix them up. Pick two that look different?",
 };
 
+/** One-at-a-time entry: the 4.2 rule in a few words, no format example. */
+const CODEWORD_SHORT_REASONS: Record<string, string> = {
+  format: "I didn't catch that.",
+  word_count: "Keep it to 1 to 3 words.",
+  too_short: "It needs at least 5 letters so it can't go off by accident.",
+  common_word: "That one's too common, you might text it by accident.",
+  same: "It needs to be different from your exit word.",
+  too_similar: "That's too close to your exit word, I might mix them up.",
+};
+
 const GUARDIAN_INVALID_REASONS: Record<string, string> = {
   no_number: "I couldn't find a phone number there. Send their name and number, or share their contact card.",
   invalid: "That number doesn't look right. Can you double check it?",
@@ -657,6 +667,22 @@ const T: Record<TemplateId, Variant[]> = {
   // ---------- small talk outside windows (4.1, 9.4): fallback when the model is unavailable ----------
   smalltalk_reply: [(c) => SMALLTALK[c.p.reasonId ?? ""]?.(c) ?? "Got it."],
   smalltalk_steer: [(c) => (STEER[c.p.step ?? ""] ?? STEER.idle!)(c)],
+
+  // ---------- code word entry (4.2): one at a time, no format lecture ----------
+  onb_codeword_ask: [
+    (c) => {
+      const reason = c.p.reasonId ? CODEWORD_SHORT_REASONS[c.p.reasonId] : null;
+      if (c.p.step === "alert") {
+        return reason ? `${reason} What's your alert word?` : `Got it. And your alert word? That's the one that quietly texts ${c.guardian} where you are.`;
+      }
+      return reason
+        ? `${reason} What's your exit word?`
+        : "Let's do them one at a time. What's your exit word? That's the one that makes your phone ring so you have an excuse to leave.";
+    },
+  ],
+  onb_codewords_order: [
+    (c) => `Got it: "${clean(c.p.exitWord) ?? "the first one"}" is your exit word and "${clean(c.p.alertWord) ?? "the second one"}" is your alert word. Want them swapped? Text "change code words" anytime.`,
+  ],
 };
 
 /** Templates sent to the guardian (not to the user). */
@@ -701,6 +727,8 @@ const PRE_WINDOW_ONLY: readonly TemplateId[] = [
   "plan_time_choice_ask",
   "smalltalk_reply",
   "smalltalk_steer",
+  "onb_codeword_ask",
+  "onb_codewords_order",
 ];
 
 /**
@@ -721,7 +749,7 @@ export function canSendInState(id: TemplateId, state: PlanState | null): boolean
 }
 
 /** Param keys that carry text the user (or a geocoder) supplied; dropped for the value-free variant (M6). */
-const VALUE_KEYS = ["venueText", "counterpartName", "counterpartSource", "address", "changes", "tip", "questionsText"] as const;
+const VALUE_KEYS = ["venueText", "counterpartName", "counterpartSource", "address", "changes", "tip", "questionsText", "exitWord", "alertWord"] as const;
 
 /** M6: the same params with every user-supplied value removed (also from the embedded plan). */
 export function valueFreeParams(params: TemplateParams | Record<string, unknown>): TemplateParams {
