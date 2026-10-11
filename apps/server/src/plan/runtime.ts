@@ -63,6 +63,20 @@ export interface PlanRuntimeOptions {
 const SHARE_JOBS: readonly JobKind[] = ["loc_poll", "t_minus_30"];
 
 export const CALL_TIMEOUT_MS = 60_000;
+/** M2: undelivered calls older than this are not placed on boot. */
+export const STALE_CALL_MS = 5 * 60_000;
+
+/** An outbound effect with its outbox id (M2). */
+interface OutboxItem {
+  id: string;
+  seq: number;
+  effect: Effect;
+}
+
+const OUTBOUND_KINDS: readonly Effect["kind"][] = ["send", "react", "call", "request_location", "start_watch", "stop_watch"];
+function isOutbound(e: Effect): boolean {
+  return OUTBOUND_KINDS.includes(e.kind);
+}
 
 /** Engine audit events that the runtime reports through onCritical (M7, X3). */
 export const CRITICAL_AUDITS: readonly string[] = ["escalation_no_guardian", "escalation_guardian_lost", "fallback_guardian_alert", "fallback_guardian_alert_unreachable"];
@@ -167,12 +181,15 @@ export class PlanRuntime {
       }
       throw err;
     }
-    // Persist the new plan and internal effects atomically, before anything leaves the process.
+    // Persist the new plan, internal effects, and the outbound effects (M2 outbox) atomically,
+    // before anything leaves the process. A crash after this commit is replayed on boot.
+    const rows: OutboxItem[] = out.effects.filter(isOutbound).map((effect, seq) => ({ id: repo.newId(), seq, effect }));
     this.o.store.sqlite.transaction(() => {
       repo.savePlan(this.o.store, out.plan);
       for (const e of out.effects) this.applyInternal(planId, e);
+      repo.insertOutbox(this.o.store, rows.map((r) => ({ ...r, planId, createdAt: now })));
     })();
-    await this.performOutbound(out.plan, out.effects);
+    await this.performOutbound(out.plan, rows);
     return out;
   }
 
@@ -224,14 +241,17 @@ export class PlanRuntime {
    * H5 (10.4 "Text first, then call"): every non-call effect runs first, in order, then calls
    * start in the background. A call never blocks this plan's queue or the scheduler.
    */
-  private async performOutbound(plan: EnginePlan, effects: Effect[]): Promise<void> {
+  private async performOutbound(plan: EnginePlan, rows: readonly OutboxItem[]): Promise<void> {
     let tracked: SentRef | null = null;
-    const calls: CallEffect[] = [];
-    for (const e of effects) {
+    const calls: OutboxItem[] = [];
+    for (const row of rows) {
+      const e = row.effect;
       if (e.kind === "call") {
-        calls.push(e);
+        calls.push(row);
         continue;
       }
+      // M2: idempotent by effect id; a row another drain already took is skipped.
+      if (!repo.claimOutbox(this.o.store, row.id)) continue;
       try {
         switch (e.kind) {
           case "send": {
@@ -258,12 +278,51 @@ export class PlanRuntime {
         // One failed effect never blocks the rest of the safety sequence.
         this.o.onError?.(err, { planId: plan.id, effect: e.kind });
       }
+      repo.markOutboxDone(this.o.store, row.id, this.o.clock.now());
     }
     if (tracked) {
       const fresh = repo.getPlan(this.o.store, plan.id);
       if (fresh) repo.savePlan(this.o.store, { ...fresh, lastCheckinMessageId: tracked.id, lastCheckinAt: tracked.at });
     }
-    for (const c of calls) this.startCall(plan, c);
+    for (const c of calls) {
+      if (!repo.claimOutbox(this.o.store, c.id)) continue;
+      this.startCall(plan, c.effect as CallEffect);
+      repo.markOutboxDone(this.o.store, c.id, this.o.clock.now());
+    }
+  }
+
+  /**
+   * Boot (M2, I16): deliver outbox rows that a crash left undelivered, oldest first, through the
+   * per-plan queue. Rows for deleted plans are dropped; calls older than STALE_CALL_MS are not
+   * placed (a fake call long after the exit word helps no one) but texts always go out.
+   */
+  async replayOutbox(): Promise<number> {
+    repo.resetSendingOutbox(this.o.store);
+    const byPlan = new Map<string, repo.OutboxRow[]>();
+    for (const r of repo.listPendingOutbox(this.o.store)) byPlan.set(r.planId, [...(byPlan.get(r.planId) ?? []), r]);
+    let n = 0;
+    for (const [planId, list] of byPlan) {
+      await this.serial(planId, async () => {
+        const plan = repo.getPlan(this.o.store, planId);
+        const now = this.o.clock.now();
+        const live: OutboxItem[] = [];
+        for (const r of list) {
+          const stale = r.effect.kind === "call" && now.getTime() - r.createdAt.getTime() > STALE_CALL_MS;
+          if (!plan || stale) {
+            repo.markOutboxDone(this.o.store, r.id, now);
+            if (plan) repo.addPlanEvent(this.o.store, planId, "outbox_call_dropped_stale", { script: (r.effect as CallEffect).script }, now);
+            continue;
+          }
+          live.push({ id: r.id, seq: r.seq, effect: r.effect });
+        }
+        if (plan && live.length > 0) {
+          repo.addPlanEvent(this.o.store, planId, "outbox_replayed", { count: live.length }, now);
+          await this.performOutbound(plan, live);
+          n += live.length;
+        }
+      });
+    }
+    return n;
   }
 
   /**

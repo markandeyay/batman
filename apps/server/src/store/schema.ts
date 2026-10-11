@@ -186,6 +186,23 @@ export const counters = sqliteTable(
   (t) => [primaryKey({ columns: [t.day, t.key] })],
 );
 
+/** M2 (I16): outbound effects written with the plan update, drained after commit, replayed on boot. */
+export const outbox = sqliteTable(
+  "outbox",
+  {
+    id: text("id").primaryKey(),
+    planId: text("plan_id")
+      .notNull()
+      .references(() => plans.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    effectJson: text("effect_json").notNull(),
+    status: text("status", { enum: ["pending", "sending", "done"] }).notNull(),
+    createdAt: ts("created_at").notNull(),
+    doneAt: ts("done_at"),
+  },
+  (t) => [index("outbox_pending").on(t.status, t.createdAt)],
+);
+
 export const locks = sqliteTable("locks", {
   name: text("name").primaryKey(),
   holder: text("holder").notNull(),
@@ -210,6 +227,7 @@ export const ALL_TABLES = {
   processed_inbound: processedInbound,
   counters,
   locks,
+  outbox,
   schema_version: schemaVersion,
 } as const;
 

@@ -4,6 +4,7 @@ import { and, asc, desc, eq, gte, inArray, lt, notInArray } from "drizzle-orm";
 import {
   TERMINAL_STATES,
   type DecoyCaller,
+  type Effect,
   type E164,
   type EscalationReason,
   type Fix,
@@ -654,4 +655,60 @@ export function incrementCounter(st: Store, day: string, key: string, by = 1): n
 export function getCounter(st: Store, day: string, key: string): number {
   const r = st.db.select().from(s.counters).where(and(eq(s.counters.day, day), eq(s.counters.key, key))).get();
   return r?.value ?? 0;
+}
+
+// ---------- outbox (M2, I16) ----------
+
+export type OutboxStatus = "pending" | "sending" | "done";
+
+export interface OutboxRow {
+  id: string;
+  planId: string;
+  seq: number;
+  /** The Effect. On replay, Date fields come back as ISO strings (templates accept both). */
+  effect: Effect;
+  status: OutboxStatus;
+  createdAt: Date;
+}
+
+/** Insert pending outbox rows. Call inside the same transaction as the plan update. */
+export function insertOutbox(st: Store, rows: ReadonlyArray<{ id: string; planId: string; seq: number; effect: Effect; createdAt: Date }>): void {
+  const ins = st.sqlite.prepare("INSERT INTO outbox (id, plan_id, seq, effect_json, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)");
+  for (const r of rows) ins.run(r.id, r.planId, r.seq, JSON.stringify(r.effect), r.createdAt.getTime());
+}
+
+/** Claim a pending row for delivery. False when another drain already took it (idempotent by id). */
+export function claimOutbox(st: Store, id: string): boolean {
+  return st.sqlite.prepare("UPDATE outbox SET status = 'sending' WHERE id = ? AND status = 'pending'").run(id).changes === 1;
+}
+
+export function markOutboxDone(st: Store, id: string, at: Date): void {
+  st.sqlite.prepare("UPDATE outbox SET status = 'done', done_at = ? WHERE id = ?").run(at.getTime(), id);
+}
+
+/** Boot: rows left "sending" by a crash become pending again (at-least-once delivery). */
+export function resetSendingOutbox(st: Store): number {
+  return st.sqlite.prepare("UPDATE outbox SET status = 'pending' WHERE status = 'sending'").run().changes;
+}
+
+interface OutboxDbRow {
+  id: string;
+  plan_id: string;
+  seq: number;
+  effect_json: string;
+  status: OutboxStatus;
+  created_at: number;
+}
+
+function toOutbox(r: OutboxDbRow): OutboxRow {
+  return { id: r.id, planId: r.plan_id, seq: r.seq, effect: JSON.parse(r.effect_json) as Effect, status: r.status, createdAt: new Date(r.created_at) };
+}
+
+export function listOutbox(st: Store, planId: string): OutboxRow[] {
+  return (st.sqlite.prepare("SELECT * FROM outbox WHERE plan_id = ? ORDER BY created_at, seq").all(planId) as OutboxDbRow[]).map(toOutbox);
+}
+
+/** Undelivered rows, oldest first. */
+export function listPendingOutbox(st: Store): OutboxRow[] {
+  return (st.sqlite.prepare("SELECT * FROM outbox WHERE status != 'done' ORDER BY created_at, plan_id, seq").all() as OutboxDbRow[]).map(toOutbox);
 }

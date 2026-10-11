@@ -169,4 +169,20 @@ CREATE TABLE locks (
 );
 `,
   },
+  {
+    version: 2,
+    name: "durable outbox for outbound effects (M2, I16)",
+    sql: `
+CREATE TABLE outbox (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  effect_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending','sending','done')),
+  created_at INTEGER NOT NULL,
+  done_at INTEGER
+);
+CREATE INDEX outbox_pending ON outbox(status, created_at);
+`,
+  },
 ];

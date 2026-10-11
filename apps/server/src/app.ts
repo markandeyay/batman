@@ -349,6 +349,13 @@ export function createApp(env: Env, deps: AppDeps = {}): App {
       });
       void inbound.start();
 
+      // M2 (I16): effects a crash left undelivered (a gdn_alert after ESCALATED was saved) go out first.
+      try {
+        const replayed = await runtime.replayOutbox();
+        if (replayed > 0) logger.warn({ replayed }, "outbox replayed on boot");
+      } catch (err) {
+        logger.error({ critical: true, error: describeError(err) }, "outbox replay failed");
+      }
       await scheduler.start();
       if (controlPort) {
         const a = await controlPort.listen();
