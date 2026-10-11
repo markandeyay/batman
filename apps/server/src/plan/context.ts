@@ -18,7 +18,8 @@ export function buildContext(
   if (plan.guardianId) {
     const g = repo.getGuardian(store, plan.guardianId);
     const link = repo.getGuardianLink(store, plan.userId, plan.guardianId);
-    if (g && link) guardian = { displayName: g.displayName, linkStatus: link.status, stopped: g.stoppedAt !== null };
+    // I14: a guardian is stopped by their record or by an address-level STOP (stopped_addresses).
+    if (g && link) guardian = { displayName: g.displayName, linkStatus: link.status, stopped: g.stoppedAt !== null || repo.isStopped(store, g.addressE164) };
   }
   const ctx: EngineContext = {
     now,
@@ -27,6 +28,7 @@ export function buildContext(
       homeLat: user?.homeLat ?? null,
       homeLng: user?.homeLng ?? null,
       decoyCaller: user?.decoyCaller ?? "roommate",
+      stopped: user ? repo.isStopped(store, user.addressE164) : false,
     },
     guardian,
     timeZone: user?.tz ?? defaultTz,
@@ -34,6 +36,7 @@ export function buildContext(
   };
   if (extra.share !== undefined) ctx.share = extra.share;
   if (extra.lastUserMessageId !== undefined) ctx.lastUserMessageId = extra.lastUserMessageId;
+  else if (user) ctx.lastUserMessageId = repo.lastInboundMessageId(store, user.addressE164); // X2: tapback target
   if (extra.night !== undefined) ctx.night = extra.night;
   return ctx;
 }

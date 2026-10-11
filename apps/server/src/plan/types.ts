@@ -90,6 +90,8 @@ export interface EngineContext {
     homeLat: number | null;
     homeLng: number | null;
     decoyCaller: DecoyCaller;
+    /** The user's address said STOP (I14). The engine sends them nothing. */
+    stopped?: boolean;
   };
   guardian: GuardianCtx | null;
   /** IANA timezone used for night hours and rendering. */

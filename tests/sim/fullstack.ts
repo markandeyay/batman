@@ -314,8 +314,6 @@ export class FullStack {
   private inSeq = 0;
   private evSeq = 0;
   private pendingFixes: Promise<unknown>[] = [];
-  /** GLUE: the dialogue's dispatch() has no message id; the runtime wants lastUserMessageId. */
-  private readonly lastInbound = new Map<string, string>();
 
   constructor(readonly opts: FullStackOptions = {}) {
     this.clock = new FakeClock(new Date(START.getTime() + (opts.startMin ?? -240) * MIN));
@@ -347,7 +345,10 @@ export class FullStack {
         return { visible, expiresAt: this.track?.share.expiresAt ?? null };
       },
       onError: (e) => this.errors.push(e),
-      lastUserMessageId: (plan) => this.lastInbound.get(plan.userId) ?? null,
+    });
+    // Planless jobs (guardian opt-in expiry, 4.3) through the runtime hook, as index.ts wires it.
+    this.runtime.setPlanlessJobHandler(async (job) => {
+      if (job.kind === "optin_expire" && job.payload) await handleOptinExpire(this.ports, job.payload as { userId: string; guardianId: string });
     });
     // The production store-backed DialogueRepo (M4): stop flags, dialogue state, and opt-in
     // times are real tables, so they survive a restart with no carry-over.
@@ -360,11 +361,7 @@ export class FullStack {
   }
 
   private async handleJob(job: Parameters<PlanRuntime["handleJob"]>[0]): Promise<void> {
-    if (job.planId) return this.runtime.handleJob(job);
-    // GLUE: non-plan jobs scheduled by the dialogue (guardian opt-in expiry, 4.3).
-    if (job.kind === "optin_expire" && job.payload) {
-      await handleOptinExpire(this.ports, job.payload as { userId: string; guardianId: string });
-    }
+    return this.runtime.handleJob(job);
   }
 
   roleOf(address: E164): Role {
@@ -393,7 +390,7 @@ export class FullStack {
       send: async (e, plan) => {
         const address = this.addressFor(e.to, plan);
         if (!address) return null;
-        // GLUE (I14): the engine does not know about STOP; the executor drops these sends.
+        // I14 at the executor too (GatewayChannel does the same); the engine also skips stopped addresses.
         const g = plan.guardianId ? repo.getGuardian(this.store, plan.guardianId) : null;
         if (this.repo.isStoppedSync(address) || (e.to === "guardian" && g?.stoppedAt)) {
           this.dropped.push({ t: rel(this.clock.now()), address, template: e.template });
@@ -486,12 +483,10 @@ export class FullStack {
     };
   }
 
-  /** GLUE: DialoguePorts.dispatch -> PlanRuntime.dispatch. */
+  /** DialoguePorts.dispatch -> PlanRuntime.dispatch (the runtime finds the latest inbound id itself, X2). */
   async dispatch(planId: string, event: DialogueEvent): Promise<void> {
     try {
-      const plan = repo.getPlan(this.store, planId);
-      const last = plan ? this.lastInbound.get(plan.userId) : undefined;
-      await this.runtime.dispatch(planId, event, last ? { lastUserMessageId: last } : {});
+      await this.runtime.dispatch(planId, event);
     } catch (err) {
       this.errors.push(err);
     }
@@ -513,8 +508,8 @@ export class FullStack {
     if (!repo.markInboundProcessed(this.store, msgId, this.clock.now())) return "duplicate";
     this.inboundLog.push({ t: rel(this.clock.now()), at: this.clock.now(), id: msgId, from: address });
     this.quota.markKnown(address);
-    const u = repo.getUserByAddress(this.store, address);
-    if (u) this.lastInbound.set(u.id, msgId);
+    // As the gateway InboundLoop does: the inbound message is logged (the tapback target, X2).
+    repo.recordMessage(this.store, { platformMessageId: msgId, direction: "inbound", addressE164: address, kind: content.kind, bodyRedacted: null, sentAt: this.clock.now() });
     let route = "error";
     try {
       route = (await handleInbound(this.ports, { id: msgId, from: address, at: this.clock.now(), content })).route;
@@ -522,8 +517,6 @@ export class FullStack {
     } catch (err) {
       this.errors.push(err);
     }
-    const nu = repo.getUserByAddress(this.store, address);
-    if (nu) this.lastInbound.set(nu.id, msgId);
     this.routes.push({ t: rel(this.clock.now()), from: address, route });
     await this.flushFixes();
     return route;

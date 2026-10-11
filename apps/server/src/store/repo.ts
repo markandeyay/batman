@@ -678,6 +678,14 @@ export function recordMessage(
     .run();
 }
 
+/** The latest inbound platform message id from an address (tapback target, 4.5 step 3). */
+export function lastInboundMessageId(st: Store, address: E164): string | null {
+  const r = st.sqlite
+    .prepare("SELECT platform_message_id AS id FROM messages WHERE direction = 'inbound' AND address_e164 = ? AND platform_message_id IS NOT NULL ORDER BY sent_at DESC, id DESC LIMIT 1")
+    .get(address) as { id: string } | undefined;
+  return r?.id ?? null;
+}
+
 // ---------- processed_inbound (dedupe, spec 8.4 step 4) ----------
 
 /** Returns true the first time a message id is seen, false for duplicates. */

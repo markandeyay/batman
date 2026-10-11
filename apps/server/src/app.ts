@@ -233,6 +233,8 @@ export function createApp(env: Env, deps: AppDeps = {}): App {
     onCritical: (event, info) => logger.error({ critical: true, event, ...info }, "CRITICAL plan event"),
   });
   executor.bind({ ingestFix: (id, fix) => runtime.ingestFix(id, fix), dispatch: (id, e) => runtime.dispatch(id, e) });
+  // X2: until index.ts wires the dialogue (handleOptinExpire), a planless job is only logged.
+  runtime.setPlanlessJobHandler(async (job) => logger.warn({ jobId: job.id, kind: job.kind }, "planless job has no handler yet"));
   const dialogueRepo = new StoreDialogueRepo(store, {
     createDraft: (input) => runtime.createDraft(input),
     updatePlanFields: (planId, patch) => runtime.updatePlanFields(planId, patch),

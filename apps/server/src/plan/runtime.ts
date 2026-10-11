@@ -140,8 +140,18 @@ export class PlanRuntime {
   }
 
   /** Scheduler handler. Plan jobs become timer events; the engine re-checks state (idempotent). */
+  private planless: ((job: JobRecord) => Promise<void>) | null = null;
+
+  /** X2: jobs without a plan (guardian opt-in expiry, 4.3) go here; index.ts wires the dialogue. */
+  setPlanlessJobHandler(fn: (job: JobRecord) => Promise<void>): void {
+    this.planless = fn;
+  }
+
   async handleJob(job: JobRecord): Promise<void> {
-    if (!job.planId) return;
+    if (!job.planId) {
+      if (this.planless) await this.planless(job);
+      return;
+    }
     const planId = job.planId;
     const event: EngineEvent = job.payload ? { type: "timer", job: job.kind, payload: job.payload } : { type: "timer", job: job.kind };
     await this.serial(planId, async () => {

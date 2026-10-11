@@ -101,6 +101,10 @@ class Tx {
       this.audit("guardian_send_skipped", { template });
       return;
     }
+    if (to === "user" && this.ctx.user.stopped) {
+      this.audit("user_send_skipped_stopped", { template }); // I14
+      return;
+    }
     const all: TemplateParams = { ...baseParams(this.p, this.ctx), ...params };
     const e: Extract<Effect, { kind: "send" }> = { kind: "send", to, template, params: all };
     if (opts.track) e.track = true;
@@ -113,6 +117,7 @@ class Tx {
   }
   call(to: "user" | "guardian", script: "fake" | "checkin" | "guardian_alert"): void {
     if (to === "guardian" && !canMessageGuardian(this.p, this.ctx)) return;
+    if (to === "user" && this.ctx.user.stopped) return; // I14
     this.fx.push({ kind: "call", to, script });
   }
   schedule(job: JobKind, runAt: Date, payload?: Record<string, unknown>): void {

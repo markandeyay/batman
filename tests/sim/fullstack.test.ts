@@ -478,7 +478,9 @@ describe("full stack: replies, tapbacks, edits, dedupe", () => {
     s.at(30, "user", "stop");
     await s.runUntil(200);
     expect(s.timeline(29)).toEqual(["30 send user:stop_ack"]);
-    expect(s.dropped.map((d) => d.template)).toEqual(["plan_cancelled"]);
+    // X2: the engine itself skips sends to a stopped user, so nothing even reaches the executor.
+    expect(s.dropped).toEqual([]);
+    expect(repo.listPlanEvents(s.store, s.plan()!.id).some((e) => e.kind === "user_send_skipped_stopped" && e.data?.template === "plan_cancelled")).toBe(true);
     expect(s.plan()!.state).toBe("CANCELLED");
   });
 
