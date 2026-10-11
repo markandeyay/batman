@@ -96,6 +96,24 @@ function sleepCheck(): void {
   const ac = out.match(/Current AC Power Setting Index:\s*0x([0-9a-f]+)/i);
   const secs = ac ? parseInt(ac[1]!, 16) : NaN;
   add("windows sleep (AC)", secs === 0, secs === 0 ? "never sleeps on AC" : `sleeps after ${Math.round(secs / 60)} min on AC. For demo: powercfg /change standby-timeout-ac 0`, true);
+
+  // Modern Standby (S0 low power idle) suspends the process when the screen turns off or the lid closes,
+  // even with the sleep timer at 0. Observed on this machine during Spike S1 (41 min gap).
+  const states = tryExec("powercfg", ["/a"]) ?? "";
+  const avail = states.split(/not available/i)[0] ?? "";
+  if (/S0 Low Power Idle/i.test(avail)) {
+    const mon = tryExec("powercfg", ["/query", "SCHEME_CURRENT", "SUB_VIDEO", "VIDEOIDLE"]);
+    const m = mon?.match(/Current AC Power Setting Index:\s*0x([0-9a-f]+)/i);
+    const monSecs = m ? parseInt(m[1]!, 16) : NaN;
+    add(
+      "modern standby",
+      monSecs === 0,
+      monSecs === 0
+        ? "present; screen never turns off on AC (keep the lid open)"
+        : `present: the PC suspends when the screen turns off (${Number.isNaN(monSecs) ? "unknown" : Math.round(monSecs / 60) + " min"} on AC) or the lid closes. For demo: powercfg /change monitor-timeout-ac 0 and keep the lid open`,
+      true,
+    );
+  }
 }
 
 await photonAuth();
