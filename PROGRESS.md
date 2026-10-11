@@ -6,6 +6,7 @@ Spec: docs/BATMAN_SPEC.md. Decisions: DECISIONS.md. Verified APIs: docs/PHOTON_N
 ## Current phase
 All components merged to main; pnpm verify green (875 tests + 2 expected-fail accuracy gaps). Spikes done (docs/SPIKES.md).
 In progress: one engineer fixing all 21 safety-review findings (docs/reviews/2026-10-10-safety-phases-1-4.md) plus X1 to X4 (GPS outlier rejection, removing sim glue, guardian-unreachable handling, AWAITING_GUARDIAN expiry), in a worktree.
+Hosting: Fly.io app batman-safety created, volume batman_data created, 34 secrets staged (docs/DEPLOY.md). Deploy with `fly deploy --ha=false` once index.ts exists.
 Next after that merges: write apps/server/src/index.ts (wire dialogue manager to app.ts using the GLUE in tests/sim/fullstack.ts as blueprint), run pnpm chat, rerun safety-reviewer, then live onboarding from the human iPhone and the guided session (16.4). Refinement loop per 16.5 with the S6 fallback (no probe).
 
 ## Done (2026-10-10)

@@ -1,0 +1,26 @@
+# Fly.io config for Batman (spec Section 17, Option B).
+# Exactly ONE machine (spec 8.1): two instances would double-reply. Deploy with --ha=false.
+# No [http_service]: every connection is outbound (Photon gRPC, Anthropic, LiveKit), so nothing is exposed.
+app = "batman-safety"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  LOG_LEVEL = "info"
+  TEST_MODE = "0"
+  ENABLE_TERMINAL = "0"
+
+[[mounts]]
+  source = "batman_data"
+  destination = "/app/data"
+  initial_size = "1gb"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[[restart]]
+  policy = "always"

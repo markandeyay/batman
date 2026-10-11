@@ -121,3 +121,8 @@ Format: date, decision, why, spec section affected.
 - Without speech, LiveKit calls would play a 1 s generated tone; on the shared pool calls 403 anyway and fall back to text.
 - `pnpm chat` uses fictional console identities (+15555550100 user, +15555550101 guardian); `createApp({ imessage: false })` runs console-only.
 - Safety review findings and their status: docs/reviews/2026-10-10-safety-phases-1-4.md.
+
+## 2026-10-10: Always-on hosting on Fly.io (spec 17 Option B)
+- The human's laptop will be off at times during judging, so Batman moves to Fly.io: app `batman-safety` (personal org), region iad, one shared-cpu-1x 512 MB machine, encrypted 1 GB volume `batman_data` mounted at /app/data (SQLite), restart policy always, no exposed services. Deploy with `fly deploy --ha=false` to keep exactly one instance (spec 8.1).
+- Secrets: the human ran `fly secrets import --stage` from .env (Claude is denied reading .env and did not work around it). 34 names staged; OPENAI_API_KEY is absent (commented out). flyctl is installed via winget at %LOCALAPPDATA%\Microsoft\WinGet\Packages\Fly-io.flyctl_*\flyctl.exe.
+- Rule: never run `pnpm dev` against the Batman Photon project on the laptop while the Fly machine runs (double replies). The cloud database starts empty; the human re-onboards from the iPhone after deploy.
