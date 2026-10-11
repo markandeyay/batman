@@ -820,7 +820,7 @@ function onFix(tx: Tx, fix: EngineContextFix): void {
       const arrived = detectArrival(fixes, { lat: u.homeLat, lng: u.homeLng }, HOME_RADIUS_M, p.closedAt ?? undefined);
       if (arrived) {
         tx.send("user", "close_glad_back");
-        closePlan(tx, "CLOSED", "home");
+        closePlan(tx, "CLOSED", "home_arrival");
       }
     }
     return;

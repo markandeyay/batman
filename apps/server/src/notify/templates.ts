@@ -261,6 +261,51 @@ function reasonLine(c: Ctx): string {
   }
 }
 
+/** L6 (I11): the repeat headline names the real reason; only a no-reply escalation claims silence. */
+function repeatHeadline(c: Ctx, reason: EscalationReason | null, mins: number | null): string {
+  switch (reason?.kind) {
+    case "alert_word":
+      return `⚠️ Reminder: ${c.user} sent me their private alert word and may not be able to talk.`;
+    case "distress":
+      return `⚠️ Reminder: ${c.user} texted me that they don't feel safe.`;
+    case "not_ok_reply":
+      return `⚠️ Reminder: ${c.user} replied in a way that sounded like they're not okay.`;
+    default:
+      return `⚠️ Still no reply from ${c.user}${mins !== null ? ` (${minutesText(Math.round(mins))})` : ""}.`;
+  }
+}
+
+const WORRIED = "If you're still worried, keep trying to reach them, and call 911 if you think they're in danger.";
+
+/** H2 (I11, 4.8): the guardian all-clear states how the plan ended and never claims more. */
+function allClearLine(c: Ctx): string {
+  const u = c.user;
+  const thanks = "Thanks for being their backup.";
+  switch (c.p.closeReason) {
+    case "home":
+    case "home_arrival":
+      return `${u} is home safe. ${thanks}`;
+    case "home_after_alert":
+      return `${u} texted me that they're home. ${thanks}`;
+    case "done":
+      return `${u} told me the meetup is over and they're heading out. ${thanks}`;
+    case "done_after_alert":
+      return `${u} texted me that they're done and heading out, so I've stopped watching. I can't confirm they're okay. ${WORRIED}`;
+    case "cancelled":
+      return `${u} ended the plan, so I've stopped looking out for them. ${thanks}`;
+    case "cancelled_after_alert":
+      return `${u} ended the plan after my alert, so I've stopped watching. I can't confirm they're okay. ${WORRIED}`;
+    case "timeout":
+      return `${u} told me they were heading out, but I didn't see them get home within 90 minutes. I've stopped watching, so I can't confirm they made it home.`;
+    case "max_extension":
+      return `${u} replied that they're okay after a long meetup, so I've closed the plan. ${thanks}`;
+    case "escalation_timeout":
+      return `It's been 2 hours since my last update about ${u}, so I've stopped watching their location. I can't confirm they're okay. ${WORRIED}`;
+    default:
+      return `${u}'s plan has ended. ${thanks}`;
+  }
+}
+
 function planLine(c: Ctx): string {
   const venue = venueShort(c);
   const start = c.startAt;
@@ -480,9 +525,10 @@ const T: Record<TemplateId, Variant[]> = {
     (c) => {
       const fix = c.p.fix;
       const at = fix ? c.date(fix.at) : null;
-      const mins = silentMinutes(c, c.p.reason ?? c.p.plan?.escalationReason ?? null);
+      const reason = c.p.reason ?? c.p.plan?.escalationReason ?? null;
+      const mins = silentMinutes(c, reason);
       return lines(
-        `⚠️ Still no reply from ${c.user}${mins !== null ? ` (${minutesText(Math.round(mins))})` : ""}.`,
+        repeatHeadline(c, reason, mins),
         fix && at ? `Last location at ${c.clock(at)} (${minutesAgo(c, at)}): ${appleMapsLink(fix.lat, fix.lng, c.user)}` : null,
         `Please call ${c.user} now. Reply GOT IT so I know you're on it.`,
       );
@@ -502,7 +548,8 @@ const T: Record<TemplateId, Variant[]> = {
   ],
   gdn_user_ok: [(c) => `Update: ${c.user} just replied that they're okay.`],
   gdn_user_ok_now: [(c) => `${c.user} says they're okay now.`],
-  gdn_all_clear: [(c) => `${c.user} is home safe. Thanks for being their backup.`],
+  // H2 (I11): "home safe" only for a home reply or a detected home arrival.
+  gdn_all_clear: [(c) => allClearLine(c)],
   gdn_location_denied: [() => "I only share location during an alert."],
   gdn_call_unavailable: [(c) => `I couldn't place a call to ${c.user} right now. Please try calling them yourself.`],
 

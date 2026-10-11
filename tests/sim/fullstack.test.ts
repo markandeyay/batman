@@ -209,7 +209,8 @@ describe("15.3 full stack scenarios", () => {
       "90 send user:close_glad_back",
       "90 send guardian:gdn_all_clear",
     ]);
-    expect(s.sent.find((m) => m.template === "gdn_all_clear")!.text).toBe("Alex is home safe. Thanks for being their backup.");
+    // H2: after an alert the guardian hears what Alex said, not a claim that they are safe.
+    expect(s.sent.find((m) => m.template === "gdn_all_clear")!.text).toBe("Alex texted me that they're home. Thanks for being their backup.");
     expect(s.plan()!.state).toBe("CLOSED");
   });
 
