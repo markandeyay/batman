@@ -1001,7 +1001,9 @@ function alertParams(tx: Tx): Record<string, unknown> {
     out.reason = r.kind;
     if (r.kind === "no_reply") {
       out.trigger = r.trigger;
-      out.minutesSilent = r.minutesSilent;
+      // I11: repeats and updates state the silence as of now, not as of the first alert.
+      const sinceAlert = p.escalatedAt ? Math.max(0, Math.round((tx.now.getTime() - p.escalatedAt.getTime()) / MIN_MS)) : 0;
+      out.minutesSilent = r.minutesSilent + sinceAlert;
     }
   }
   return out;
